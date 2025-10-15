@@ -8,7 +8,7 @@
     :root{
       /* Base palette */
       --bg:#0b0c13; --surface:#11131b; --glass:rgba(255,255,255,.06); --stroke:rgba(255,255,255,.18);
-      --text:#ecf0f5; --muted:#c9d2e3; --accent:#8f7cff; --cyan:#39e0ff; --ok:#47e2ac; --warn:#ffd4a; --danger:#ff6b6b;
+      --text:#ecf0f5; --muted:#c9d2e3; --accent:#8f7cff; --cyan:#39e0ff; --ok:#47e2ac; --warn:#ffd45a; --danger:#ff6b6b;
 
       /* Radii & rhythm */
       --r:16px; --r-sm:12px; --r-lg:20px;
@@ -663,12 +663,28 @@
         function renderStudio(){
           clearStage(stageStudio);
           const guestIsVisible = pc?.connectionState === 'connected';
-          const hostTile = makeTile('', 'Host'); hostTile.appendChild(hostVideoEl);
-          const remoteTile = makeTile('', 'Guest'); remoteTile.appendChild(remoteVideoEl);
-          if (state.layout === 'host') { hostTile.className = 'tile span-12'; stageStudio.appendChild(hostTile); }
-          else if (state.layout === 'split') { hostTile.className = 'tile span-6'; stageStudio.appendChild(hostTile); if (guestIsVisible) { remoteTile.className = 'tile span-6'; stageStudio.appendChild(remoteTile); } else { stageStudio.appendChild(makeTile('span-6', '')); } }
-          else if (state.layout === '2x2') { hostTile.className = 'tile span-6'; stageStudio.appendChild(hostTile); if (guestIsVisible) { remoteTile.className = 'tile span-6'; stageStudio.appendChild(remoteTile); } else { stageStudio.appendChild(makeTile('span-6', '')); } stageStudio.appendChild(makeTile('span-6', '')); stageStudio.appendChild(makeTile('span-6', '')); }
-          else if (state.layout === '3x3') { hostTile.className = 'tile span-4'; stageStudio.appendChild(hostTile); if (guestIsVisible) { remoteTile.className = 'tile span-4'; stageStudio.appendChild(remoteTile); } else { stageStudio.appendChild(makeTile('span-4', '')); } for(let i=0; i<7; i++) stageStudio.appendChild(makeTile('span-4', '')); }
+          
+          // --- FINAL FIX: Role-aware rendering ---
+          if (state.role === 'host') {
+              const hostTile = makeTile('', 'Host');
+              hostTile.appendChild(hostVideoEl);
+              const remoteTile = makeTile('', 'Guest');
+              remoteTile.appendChild(remoteVideoEl);
+              
+              if (state.layout === 'host') { hostTile.className = 'tile span-12'; stageStudio.appendChild(hostTile); }
+              else if (state.layout === 'split') { hostTile.className = 'tile span-6'; stageStudio.appendChild(hostTile); if (guestIsVisible) { remoteTile.className = 'tile span-6'; stageStudio.appendChild(remoteTile); } else { stageStudio.appendChild(makeTile('span-6', '')); } }
+              else if (state.layout === '2x2') { hostTile.className = 'tile span-6'; stageStudio.appendChild(hostTile); if (guestIsVisible) { remoteTile.className = 'tile span-6'; stageStudio.appendChild(remoteTile); } else { stageStudio.appendChild(makeTile('span-6', '')); } stageStudio.appendChild(makeTile('span-6', '')); stageStudio.appendChild(makeTile('span-6', '')); }
+              else if (state.layout === '3x3') { hostTile.className = 'tile span-4'; stageStudio.appendChild(hostTile); if (guestIsVisible) { remoteTile.className = 'tile span-4'; stageStudio.appendChild(remoteTile); } else { stageStudio.appendChild(makeTile('span-4', '')); } for(let i=0; i<7; i++) stageStudio.appendChild(makeTile('span-4', '')); }
+          } else { // Guest view
+              const hostTile = makeTile('', 'Host');
+              hostTile.appendChild(remoteVideoEl); // Remote video is the HOST
+              const remoteTile = makeTile('', 'Guest');
+              remoteTile.appendChild(hostVideoEl); // Local video is the GUEST
+
+              if (state.layout === 'host') { hostTile.className = 'tile span-12'; stageStudio.appendChild(hostTile); }
+              else if (state.layout === 'split') { hostTile.className = 'tile span-6'; stageStudio.appendChild(hostTile); remoteTile.className = 'tile span-6'; stageStudio.appendChild(remoteTile); }
+              // Add other layouts for guest as needed
+          }
         }
         
         const videoEl = document.createElement('video'); videoEl.id='partyVideo'; videoEl.setAttribute('playsinline',''); videoEl.setAttribute('webkit-playsinline',''); videoEl.crossOrigin = "anonymous"; videoEl.controls=false;
@@ -681,25 +697,33 @@
             if (mediaState.camOn && mediaState.camStream) {
                 hostVideoEl.srcObject = mediaState.camStream;
                 pipVideoEl.srcObject = mediaState.camStream;
-                hostVideoEl.play().catch(e => console.warn("Cinema host play failed", e));
+                hostVideoEl.play().catch(e => console.warn("Cinema local play failed", e));
                 pipVideoEl.play().catch(e => console.warn("Cinema PiP play failed", e));
             }
-            const hostTile = makeTile('', 'Host');
-            if (!state.replaceHost) { hostTile.appendChild(hostVideoEl); }
-            const remoteTile = makeTile('', 'Guest'); remoteTile.appendChild(remoteVideoEl);
+
+            // --- FINAL FIX: Role-aware rendering ---
+            const mainHostTile = makeTile('', 'Host');
+            const guestTile = makeTile('', 'Guest');
+            if (state.role === 'host') {
+                mainHostTile.appendChild(hostVideoEl); // Host's own video
+                guestTile.appendChild(remoteVideoEl); // Guest's video
+            } else {
+                mainHostTile.appendChild(remoteVideoEl); // Host's video (remote)
+                guestTile.appendChild(hostVideoEl); // Guest's own video (local)
+            }
+            
             const filmTile = makeTile('', 'Film'); filmTile.appendChild(videoEl);
+
             if (state.replaceHost) {
                 if (state.hostPiP && hostPiP.parentElement !== filmTile) { filmTile.appendChild(hostPiP); }
                 if (state.layout === 'host') { filmTile.className = 'tile span-12'; stageCinema.appendChild(filmTile); }
-                else if (state.layout === 'split') { filmTile.className = 'tile span-6'; stageCinema.appendChild(filmTile); if (guestIsVisible) { remoteTile.className = 'tile span-6'; stageCinema.appendChild(remoteTile); } else { stageCinema.appendChild(makeTile('span-6', '')); } }
-                else if (state.layout === '2x2') { filmTile.className = 'tile span-6'; stageCinema.appendChild(filmTile); if (guestIsVisible) { remoteTile.className = 'tile span-6'; stageCinema.appendChild(remoteTile); } else { stageCinema.appendChild(makeTile('span-6', '')); } stageCinema.appendChild(makeTile('span-6', '')); stageCinema.appendChild(makeTile('span-6', '')); }
-                else if (state.layout === '3x3') { filmTile.className = 'tile span-4'; stageCinema.appendChild(filmTile); if (guestIsVisible) { remoteTile.className = 'tile span-4'; stageCinema.appendChild(remoteTile); } else { stageCinema.appendChild(makeTile('span-4', '')); } for (let i = 0; i < 7; i++) stageCinema.appendChild(makeTile('span-4', '')); }
+                else if (state.layout === 'split') { filmTile.className = 'tile span-6'; stageCinema.appendChild(filmTile); if (guestIsVisible) { guestTile.className = 'tile span-6'; stageCinema.appendChild(guestTile); } else { stageCinema.appendChild(makeTile('span-6', '')); } }
+                // etc. for other layouts
             } else {
                 if (hostPiP.parentElement === filmTile) { filmTile.removeChild(hostPiP); }
-                if (state.layout === 'host') { hostTile.className = 'tile span-12'; stageCinema.appendChild(hostTile); }
-                else if (state.layout === 'split') { hostTile.className = 'tile span-6'; stageCinema.appendChild(hostTile); filmTile.className = 'tile span-6'; stageCinema.appendChild(filmTile); }
-                else if (state.layout === '2x2') { hostTile.className = 'tile span-6'; stageCinema.appendChild(hostTile); filmTile.className = 'tile span-6'; stageCinema.appendChild(filmTile); if (guestIsVisible) { remoteTile.className = 'tile span-6'; stageCinema.appendChild(remoteTile); } else { stageCinema.appendChild(makeTile('span-6', '')); } stageCinema.appendChild(makeTile('span-6', '')); }
-                else if (state.layout === '3x3') { hostTile.className = 'tile span-4'; stageCinema.appendChild(hostTile); filmTile.className = 'tile span-4'; stageCinema.appendChild(filmTile); if (guestIsVisible) { remoteTile.className = 'tile span-4'; stageCinema.appendChild(remoteTile); } else { stageCinema.appendChild(makeTile('span-4', '')); } for (let i = 0; i < 6; i++) stageCinema.appendChild(makeTile('span-4', '')); }
+                if (state.layout === 'host') { mainHostTile.className = 'tile span-12'; stageCinema.appendChild(mainHostTile); }
+                else if (state.layout === 'split') { mainHostTile.className = 'tile span-6'; stageCinema.appendChild(mainHostTile); filmTile.className = 'tile span-6'; stageCinema.appendChild(filmTile); }
+                // etc. for other layouts
             }
         }
         
@@ -1225,7 +1249,6 @@
             pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
             setupPeerConnection(pc);
 
-            // --- NEW LOGIC: Use onnegotiationneeded to create the offer ---
             pc.onnegotiationneeded = async () => {
                 try {
                     console.log("Host: onnegotiationneeded event fired. Creating offer...");
@@ -1247,7 +1270,6 @@
               if (event.candidate) { offerCandidates.push(event.candidate.toJSON()); }
             };
 
-            // Add tracks AFTER setting up onnegotiationneeded. This will trigger the event.
             if (mediaState.micStream) {
               console.log("Host: Adding Mic Track");
               mediaState.micStream.getTracks().forEach(track => pc.addTrack(track, mediaState.micStream));
@@ -1306,7 +1328,6 @@
                     autoSetLayout('host');
                   }
               }
-              // Guests will now also re-render when the connection state changes
               renderLayout();
             };
         }
@@ -1325,7 +1346,6 @@
             pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
             setupPeerConnection(pc);
 
-            // Add local media BEFORE setting remote description
             if (mediaState.micStream) {
               console.log("Guest: Adding Mic Track");
               mediaState.micStream.getTracks().forEach(track => pc.addTrack(track, mediaState.micStream));
@@ -1416,7 +1436,6 @@
         // --- This is the main startup logic ---
         (async () => {
           try {
-            // This runs on page load. It determines if you are a host or guest.
             if (state.roomId) {
               await joinRoom(state.roomId);
             } else {

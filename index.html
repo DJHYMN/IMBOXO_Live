@@ -615,7 +615,7 @@
         btnModeStudio.onclick=()=> setMode('studio'); btnModeCinema.onclick=()=> setMode('cinema'); btnModeShop.onclick=()=> setMode('shop');
 
         const bus = new EventTarget();
-        function send(m){ bus.dispatchEvent(new CustomEvent('m',{detail:m})); }
+        function send(m){ if (roomRef && state.role === 'host') { roomRef.child('messages').push(m); } bus.dispatchEvent(new CustomEvent('m',{detail:m})); }
         function onMsg(fn){ bus.addEventListener('m', e=> fn(e.detail)); }
 
         function wireChat(inputId, logId){
@@ -708,18 +708,18 @@
         // --- NEW: Function to programmatically set layout ---
         function autoSetLayout(newLayout) {
             state.layout = newLayout;
-            // Update the UI buttons in all relevant galleries
             ['studioGallery', 'cinemaGallery', 'shopGallery'].forEach(galleryId => {
                 const gallery = document.getElementById(galleryId);
                 if (gallery) {
                     [...gallery.querySelectorAll('.layout-card')].forEach(card => {
-                        const isCorrectLayout = card.title.toLowerCase() === newLayout;
-                        card.setAttribute('aria-pressed', isCorrectLayout);
+                        card.setAttribute('aria-pressed', card.title.toLowerCase() === newLayout);
                     });
                 }
             });
             renderLayout();
-            // Future: send({ type: 'layout_update', layout: newLayout });
+            if (state.role === 'host') {
+                send({ type: 'layout_change', layout: newLayout });
+            }
         }
 
         function layoutThumb(type, cinema=false) {
@@ -752,7 +752,6 @@
             return wrap;
         }
         
-        // --- UPDATED: Use autoSetLayout for manual clicks ---
         function mountLayoutGallery(containerId, forCinema=false){
             const container=document.getElementById(containerId);
             if(!container) return;
@@ -763,7 +762,7 @@
                 card.setAttribute('aria-pressed', state.layout===k?'true':'false');
                 card.title=k;
                 card.appendChild(layoutThumb(k,forCinema));
-                card.onclick=()=> autoSetLayout(k); // Use the new function
+                card.onclick=()=> autoSetLayout(k);
                 container.appendChild(card);
             });
         }
@@ -839,7 +838,19 @@
             }
         }
         function hostSeek(delta){ if(!state.filmLoaded) return; videoEl.currentTime=Math.max(0, videoEl.currentTime+delta); send({type:'seek',pos:videoEl.currentTime,t:performance.now()}); }
-        onMsg(m=>{ if (m.type === 'chat') { showOverlayMessage(m); } if(state.role==='host') return; if(m.type==='play'){ gentlySeekTo(m.pos + (performance.now()-m.t)/1000); videoEl.play(); setupOutputAudioProcessing(); } if(m.type==='pause'){ gentlySeekTo(m.pos); videoEl.pause(); } if(m.type==='seek'){ gentlySeekTo(m.pos); } if(m.type==='tick' && !videoEl.paused){ gentlySeekTo(m.pos + (performance.now()-m.t)/1000); } });
+        onMsg(m=>{
+            if(state.role === 'guest') {
+                if(m.type==='play'){ gentlySeekTo(m.pos + (performance.now()-m.t)/1000); videoEl.play(); setupOutputAudioProcessing(); }
+                if(m.type==='pause'){ gentlySeekTo(m.pos); videoEl.pause(); }
+                if(m.type==='seek'){ gentlySeekTo(m.pos); }
+                if(m.type==='tick' && !videoEl.paused){ gentlySeekTo(m.pos + (performance.now()-m.t)/1000); }
+                if(m.type==='layout_change') { autoSetLayout(m.layout); }
+            }
+            if (m.type === 'chat') {
+                [chatLogStudio, chatLogCinema, chatLogShop].forEach(log => addChat(log, m));
+                showOverlayMessage(m);
+            }
+        });
         setInterval(()=>{ if(state.role==='host' && state.playing) send({type:'tick',pos:videoEl.currentTime,t:performance.now()}); }, 1500);
         btnPlay.onclick=hostPlayPause; document.getElementById('btnSeekBack').onclick=()=> hostSeek(-10); document.getElementById('btnSeekFwd').onclick=()=> hostSeek(+10);
         chkReplaceHost.onchange=()=>{ state.replaceHost=chkReplaceHost.checked; pipRow.style.display = state.replaceHost ? 'inline-flex' : 'none'; renderLayout(); }; chkHostPiP.onchange=()=>{ state.hostPiP=chkHostPiP.checked; renderLayout(); };

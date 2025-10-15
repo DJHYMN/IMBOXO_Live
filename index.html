@@ -599,15 +599,18 @@
           liveCollection: {}, isTesting: true, chatOverlayVisible: true,
         };
 
-        function setMode(m){
-          state.mode = m;
-          document.body.setAttribute('data-mode', m);
+        function setMode(newMode){
+          state.mode = newMode;
+          document.body.setAttribute('data-mode', newMode);
           [btnModeStudio,btnModeCinema,btnModeShop].forEach(b=> b.setAttribute('aria-pressed','false'));
-          if(m==='studio') btnModeStudio.setAttribute('aria-pressed','true');
-          if(m==='cinema') btnModeCinema.setAttribute('aria-pressed','true');
-          if(m==='shop')   btnModeShop.setAttribute('aria-pressed','true');
-          if (m !== 'shop') { try { document.getElementById('productSpotlight')?.classList.remove('open'); } catch(e){} }
+          if(newMode==='studio') btnModeStudio.setAttribute('aria-pressed','true');
+          if(newMode==='cinema') btnModeCinema.setAttribute('aria-pressed','true');
+          if(newMode==='shop')   btnModeShop.setAttribute('aria-pressed','true');
+          if (newMode !== 'shop') { try { document.getElementById('productSpotlight')?.classList.remove('open'); } catch(e){} }
           renderLayout();
+          if (state.role === 'host') {
+            sendStateUpdate();
+          }
         }
         
         function setRole(r){ state.role=r; roleTxt.textContent=r[0].toUpperCase()+r.slice(1); document.body.setAttribute('data-role', r); }
@@ -664,7 +667,6 @@
           clearStage(stageStudio);
           const guestIsVisible = pc?.connectionState === 'connected';
           
-          // --- FINAL FIX: Role-aware rendering ---
           const localTile = makeTile('', state.role === 'host' ? 'Host' : 'You');
           localTile.appendChild(hostVideoEl);
           const remoteTile = makeTile('', state.role === 'host' ? 'Guest' : 'Host');
@@ -676,20 +678,25 @@
           } else if (state.layout === 'split') {
               localTile.className = 'tile span-6';
               remoteTile.className = 'tile span-6';
-              stageStudio.appendChild(localTile);
-              stageStudio.appendChild(remoteTile);
+              if(state.role === 'host') {
+                stageStudio.appendChild(localTile);
+                if(guestIsVisible) stageStudio.appendChild(remoteTile);
+              } else {
+                stageStudio.appendChild(remoteTile); // Host is remote
+                stageStudio.appendChild(localTile); // Guest is local
+              }
           } else if (state.layout === '2x2') {
               localTile.className = 'tile span-6';
               remoteTile.className = 'tile span-6';
               stageStudio.appendChild(localTile);
-              stageStudio.appendChild(remoteTile);
+              if(guestIsVisible) stageStudio.appendChild(remoteTile);
               stageStudio.appendChild(makeTile('span-6', ''));
               stageStudio.appendChild(makeTile('span-6', ''));
           } else if (state.layout === '3x3') {
               localTile.className = 'tile span-4';
               remoteTile.className = 'tile span-4';
               stageStudio.appendChild(localTile);
-              stageStudio.appendChild(remoteTile);
+              if(guestIsVisible) stageStudio.appendChild(remoteTile);
               for(let i=0; i<7; i++) stageStudio.appendChild(makeTile('span-4', ''));
           }
         }
@@ -701,7 +708,7 @@
         function renderCinema() {
             clearStage(stageCinema);
             const guestIsVisible = pc?.connectionState === 'connected';
-
+            
             pipVideoEl.srcObject = mediaState.camStream;
             pipVideoEl.play().catch(e => console.warn("PiP play failed", e));
             hostPiP.innerHTML = '';
@@ -741,7 +748,7 @@
                     case '3x3':
                         filmTile.className = 'tile span-6';
                         stageCinema.appendChild(filmTile);
-                        if (guestIsVisible) { guestTile.className = 'tile span-6'; stageCinema.appendChild(guestTile); }
+                        if(guestIsVisible) { guestTile.className = 'tile span-6'; stageCinema.appendChild(guestTile); }
                         stageCinema.appendChild(makeTile('span-6', ''));
                         stageCinema.appendChild(makeTile('span-6', ''));
                         break;
@@ -909,6 +916,7 @@
             if (state.role === 'host') {
                 send({
                     type: 'state_update',
+                    mode: state.mode,
                     layout: state.layout,
                     replaceHost: state.replaceHost,
                     hostPiP: state.hostPiP
@@ -928,12 +936,14 @@
                 if(m.type==='seek'){ gentlySeekTo(m.pos); }
                 if(m.type==='tick' && !videoEl.paused){ gentlySeekTo(m.pos + (performance.now()-m.t)/1000); }
                 if(m.type==='state_update') {
+                    setMode(m.mode); // This will also call renderLayout
+                    state.layout = m.layout;
                     state.replaceHost = m.replaceHost;
                     state.hostPiP = m.hostPiP;
                     chkReplaceHost.checked = m.replaceHost;
                     chkHostPiP.checked = m.hostPiP;
                     pipRow.style.display = m.replaceHost ? 'inline-flex' : 'none';
-                    autoSetLayout(m.layout);
+                    autoSetLayout(m.layout); // This will update buttons and render
                 }
             }
         });

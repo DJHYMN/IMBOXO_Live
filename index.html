@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video Sync Test</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #121212;
+            color: #e0e0e0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .container {
+            width: 90%;
+            max-width: 800px;
+            text-align: center;
+        }
+        video {
+            width: 100%;
+            border-radius: 8px;
+            background-color: #000;
+        }
+        .controls {
+            margin: 20px 0;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            border: 1px solid #444;
+            background-color: #2a2a2a;
+            color: #e0e0e0;
+            border-radius: 5px;
+            margin: 0 10px;
+        }
+        button.active {
+            background-color: #007bff;
+            color: white;
+            border-color: #007bff;
+        }
+        h1 {
+            margin-bottom: 10px;
+        }
+        #status {
+            margin-top: 15px;
+            font-style: italic;
+            color: #aaa;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>Video Sync Session</h1>
+
+        <video id="localVideoInput" controls src="https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"></video>
+        
+        <div id="status">Please select your role to begin.</div>
+
+        <div class="controls">
+            <button id="hostBtn">Become Host</button>
+            <button id="guestBtn">Become Guest</button>
+        </div>
+    </div>
+
+<script>
+// This is the most important part!
+// It ensures the code doesn't run until the HTML is fully loaded.
+document.addEventListener('DOMContentLoaded', () => {
+
+    // --- 1. Get references to HTML elements ---
+    const videoPlayer = document.getElementById('localVideoInput');
+    const hostBtn = document.getElementById('hostBtn');
+    const guestBtn = document.getElementById('guestBtn');
+    const statusDiv = document.getElementById('status');
+    const body = document.querySelector('body');
+
+    // --- This function contains all our app logic ---
+    function initializeApp(role) {
+        // Clear any previous state
+        if (window.syncInterval) clearInterval(window.syncInterval);
+        
+        body.dataset.role = role; // Set the role on the body
+        hostBtn.classList.toggle('active', role === 'host');
+        guestBtn.classList.toggle('active', role === 'guest');
+        statusDiv.textContent = `You are now the ${role}. Connection is being established.`;
+        console.log(`Initializing as ${role}`);
+
+        // --- 2. WebSocket Connection ---
+        // IMPORTANT: Replace this with the URL of your actual WebSocket server.
+        const socket = new WebSocket('ws://localhost:8080');
+
+        socket.onopen = () => {
+            console.log('Successfully connected to the signaling server.');
+            statusDiv.textContent = `You are the ${role}. Connection successful.`;
+        };
+
+        socket.onerror = (error) => {
+            console.error('WebSocket Error:', error);
+            statusDiv.textContent = `WebSocket connection failed. Please check the console.`;
+        };
+
+        socket.onclose = () => {
+            console.warn('WebSocket connection closed.');
+            statusDiv.textContent = `Connection closed. Please refresh and select a role again.`;
+        };
+
+
+        // --- 3. GUEST Logic: Listen for commands from the host ---
+        if (role === 'guest') {
+            videoPlayer.controls = false; // Guests cannot control the video directly
+            socket.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    console.log('Guest received command:', data); // For debugging
+
+                    switch (data.command) {
+                        case 'play':
+                            videoPlayer.currentTime = data.time;
+                            videoPlayer.play();
+                            break;
+                        case 'pause':
+                            videoPlayer.pause();
+                            break;
+                        case 'seek':
+                            videoPlayer.currentTime = data.time;
+                            break;
+                        case 'sync':
+                            // Only correct the time if we've drifted by more than 1.5 seconds
+                            if (Math.abs(videoPlayer.currentTime - data.time) > 1.5) {
+                                console.log(`Resyncing time from ${videoPlayer.currentTime} to ${data.time}`);
+                                videoPlayer.currentTime = data.time;
+                            }
+                            break;
+                    }
+                } catch (error) {
+                    console.error("Failed to process message:", error);
+                }
+            };
+        }
+
+
+        // --- 4. HOST Logic: Send commands when actions are taken ---
+        if (role === 'host') {
+            videoPlayer.controls = true; // Hosts can control the video
+            
+            function sendCommandToGuest(data) {
+                // In a real app, you would send this to specific guests.
+                // For this example, we assume the server broadcasts it.
+                if (socket.readyState === WebSocket.OPEN) {
+                    socket.send(JSON.stringify(data));
+                }
+            }
+
+            videoPlayer.addEventListener('play', () => sendCommandToGuest({ command: 'play', time: videoPlayer.currentTime }));
+            videoPlayer.addEventListener('pause', () => sendCommandToGuest({ command: 'pause', time: videoPlayer.currentTime }));
+            videoPlayer.addEventListener('seeking', () => sendCommandToGuest({ command: 'seek', time: videoPlayer.currentTime }));
+
+            // Send a periodic 'sync' message to keep guests on track
+            window.syncInterval = setInterval(() => {
+                if (!videoPlayer.paused) {
+                    sendCommandToGuest({ command: 'sync', time: videoPlayer.currentTime });
+                }
+            }, 2500); // Sync every 2.5 seconds
+        }
+    }
+
+    // --- 5. Add event listeners to the role buttons ---
+    hostBtn.addEventListener('click', () => initializeApp('host'));
+    guestBtn.addEventListener('click', () => initializeApp('guest'));
+});
+</script>
+
+</body>
+</html>

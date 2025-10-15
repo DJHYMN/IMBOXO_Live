@@ -93,8 +93,8 @@ document.addEventListener('DOMContentLoaded', () => {
         console.log(`Initializing as ${role}`);
 
         // --- 2. WebSocket Connection ---
-        // IMPORTANT: Replace this with the URL of your actual WebSocket server.
-        const socket = new WebSocket('ws://localhost:8080');
+        // THIS IS THE CORRECTED LINE:
+        const socket = new WebSocket('wss://imboxo-live-server.onrender.com');
 
         socket.onopen = () => {
             console.log('Successfully connected to the signaling server.');
@@ -151,8 +151,6 @@ document.addEventListener('DOMContentLoaded', () => {
             videoPlayer.controls = true; // Hosts can control the video
             
             function sendCommandToGuest(data) {
-                // In a real app, you would send this to specific guests.
-                // For this example, we assume the server broadcasts it.
                 if (socket.readyState === WebSocket.OPEN) {
                     socket.send(JSON.stringify(data));
                 }

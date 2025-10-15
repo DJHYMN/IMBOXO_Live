@@ -2,23 +2,20 @@
 
 const { WebSocketServer } = require('ws');
 
-// Create a WebSocket server on port 8080
-const wss = new WebSocketServer({ port: process.env.PORT || 8080 });
+// Use the port provided by the environment, or 8080 as a fallback
+const PORT = process.env.PORT || 8080;
+const wss = new WebSocketServer({ port: PORT });
 
-console.log("✅ Signaling server started on ws://localhost:8080");
+// This log will now show the correct port, whether local or on Render
+console.log(`✅ Signaling server started on port ${PORT}`);
 
-// This function will run every time a new client connects
 wss.on('connection', function connection(ws) {
   console.log("🔗 A new client connected!");
 
-  // This function runs when a message is received from a client
   ws.on('message', function message(data) {
     console.log('Received message => %s', data);
 
-    // This is the key part: Broadcast the message to all other clients.
-    // The server is the "middleman".
     wss.clients.forEach(function each(client) {
-      // Send to everyone except the original sender
       if (client !== ws && client.readyState === ws.OPEN) {
         client.send(data.toString());
       }

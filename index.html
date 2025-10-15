@@ -702,19 +702,24 @@
             clearStage(stageCinema);
             const guestIsVisible = pc?.connectionState === 'connected';
 
-            // Always use local stream for PiP, regardless of role
             pipVideoEl.srcObject = mediaState.camStream;
             pipVideoEl.play().catch(e => console.warn("PiP play failed", e));
             hostPiP.innerHTML = '';
             hostPiP.appendChild(pipVideoEl);
 
-            const hostContainer = (state.role === 'host') ? hostVideoEl : remoteVideoEl;
-            const guestContainer = (state.role === 'host') ? remoteVideoEl : hostVideoEl;
+            const localVideoContainer = hostVideoEl;
+            const remoteVideoContainer = remoteVideoEl;
 
             const hostTile = makeTile('', 'Host');
-            hostTile.appendChild(hostContainer);
             const guestTile = makeTile('', 'Guest');
-            guestTile.appendChild(guestContainer);
+            if(state.role === 'host') {
+                hostTile.appendChild(localVideoContainer);
+                guestTile.appendChild(remoteVideoContainer);
+            } else {
+                hostTile.appendChild(remoteVideoContainer);
+                guestTile.appendChild(localVideoContainer);
+            }
+            
             const filmTile = makeTile('', 'Film');
             filmTile.appendChild(videoEl);
 
@@ -722,23 +727,47 @@
                 if (state.hostPiP && hostPiP.parentElement !== filmTile) {
                     filmTile.appendChild(hostPiP);
                 }
-                if (state.layout === 'host') { filmTile.className = 'tile span-12'; stageCinema.appendChild(filmTile); }
-                else if (state.layout === 'split') { filmTile.className = 'tile span-6'; stageCinema.appendChild(filmTile); if (guestIsVisible) { guestTile.className = 'tile span-6'; stageCinema.appendChild(guestTile); } else { stageCinema.appendChild(makeTile('span-6',''));} }
-                else if (state.layout === '2x2' || state.layout === '3x3') {
-                    filmTile.className = 'tile span-6'; stageCinema.appendChild(filmTile);
-                    if(guestIsVisible) { guestTile.className = 'tile span-6'; stageCinema.appendChild(guestTile); }
-                    stageCinema.appendChild(makeTile('span-6','')); stageCinema.appendChild(makeTile('span-6',''));
+                switch (state.layout) {
+                    case 'host':
+                        filmTile.className = 'tile span-12';
+                        stageCinema.appendChild(filmTile);
+                        break;
+                    case 'split':
+                        filmTile.className = 'tile span-6';
+                        stageCinema.appendChild(filmTile);
+                        if (guestIsVisible) { guestTile.className = 'tile span-6'; stageCinema.appendChild(guestTile); }
+                        break;
+                    case '2x2':
+                    case '3x3':
+                        filmTile.className = 'tile span-6';
+                        stageCinema.appendChild(filmTile);
+                        if (guestIsVisible) { guestTile.className = 'tile span-6'; stageCinema.appendChild(guestTile); }
+                        stageCinema.appendChild(makeTile('span-6', ''));
+                        stageCinema.appendChild(makeTile('span-6', ''));
+                        break;
                 }
-
             } else {
                 if (hostPiP.parentElement) { hostPiP.parentElement.removeChild(hostPiP); }
-                if (state.layout === 'host') { hostTile.className = 'tile span-12'; stageCinema.appendChild(hostTile); }
-                else if (state.layout === 'split') { hostTile.className = 'tile span-6'; stageCinema.appendChild(hostTile); filmTile.className = 'tile span-6'; stageCinema.appendChild(filmTile); }
-                else if (state.layout === '2x2' || state.layout === '3x3') {
-                    hostTile.className = 'tile span-6'; stageCinema.appendChild(hostTile);
-                    filmTile.className = 'tile span-6'; stageCinema.appendChild(filmTile);
-                    if(guestIsVisible) { guestTile.className = 'tile span-6'; stageCinema.appendChild(guestTile); }
-                    stageCinema.appendChild(makeTile('span-6',''));
+                switch (state.layout) {
+                    case 'host':
+                        hostTile.className = 'tile span-12';
+                        stageCinema.appendChild(hostTile);
+                        break;
+                    case 'split':
+                        hostTile.className = 'tile span-6';
+                        filmTile.className = 'tile span-6';
+                        stageCinema.appendChild(hostTile);
+                        stageCinema.appendChild(filmTile);
+                        break;
+                    case '2x2':
+                    case '3x3':
+                        hostTile.className = 'tile span-6';
+                        filmTile.className = 'tile span-6';
+                        stageCinema.appendChild(hostTile);
+                        stageCinema.appendChild(filmTile);
+                        if (guestIsVisible) { guestTile.className = 'tile span-6'; stageCinema.appendChild(guestTile); }
+                        stageCinema.appendChild(makeTile('span-6',''));
+                        break;
                 }
             }
         }
@@ -756,9 +785,7 @@
                 }
             });
             renderLayout();
-            if (state.role === 'host') {
-                send({ type: 'state_update', layout: state.layout, replaceHost: state.replaceHost, hostPiP: state.hostPiP });
-            }
+            sendStateUpdate();
         }
 
         function layoutThumb(type, cinema=false) {
@@ -877,7 +904,18 @@
             }
         }
         function hostSeek(delta){ if(!state.filmLoaded) return; videoEl.currentTime=Math.max(0, videoEl.currentTime+delta); send({type:'seek',pos:videoEl.currentTime,t:performance.now()}); }
-
+        
+        function sendStateUpdate() {
+            if (state.role === 'host') {
+                send({
+                    type: 'state_update',
+                    layout: state.layout,
+                    replaceHost: state.replaceHost,
+                    hostPiP: state.hostPiP
+                });
+            }
+        }
+        
         onMsg(m=>{
             if (m.type === 'chat') {
                 [chatLogStudio, chatLogCinema, chatLogShop].forEach(log => addChat(log, m));
@@ -895,14 +933,15 @@
                     chkReplaceHost.checked = m.replaceHost;
                     chkHostPiP.checked = m.hostPiP;
                     pipRow.style.display = m.replaceHost ? 'inline-flex' : 'none';
-                    autoSetLayout(m.layout); // This will call renderLayout()
+                    autoSetLayout(m.layout);
                 }
             }
         });
+
         setInterval(()=>{ if(state.role==='host' && state.playing) send({type:'tick',pos:videoEl.currentTime,t:performance.now()}); }, 1500);
         btnPlay.onclick=hostPlayPause; document.getElementById('btnSeekBack').onclick=()=> hostSeek(-10); document.getElementById('btnSeekFwd').onclick=()=> hostSeek(+10);
-        chkReplaceHost.onchange=()=>{ state.replaceHost=chkReplaceHost.checked; pipRow.style.display = state.replaceHost ? 'inline-flex' : 'none'; renderLayout(); send({type:'state_update', layout: state.layout, replaceHost: state.replaceHost, hostPiP: state.hostPiP}); };
-        chkHostPiP.onchange=()=>{ state.hostPiP=chkHostPiP.checked; renderLayout(); send({type:'state_update', layout: state.layout, replaceHost: state.replaceHost, hostPiP: state.hostPiP}); };
+        chkReplaceHost.onchange=()=>{ state.replaceHost=chkReplaceHost.checked; pipRow.style.display = state.replaceHost ? 'inline-flex' : 'none'; renderLayout(); sendStateUpdate(); };
+        chkHostPiP.onchange=()=>{ state.hostPiP=chkHostPiP.checked; renderLayout(); sendStateUpdate(); };
 
         function escapeHtml(s){ return s.replace(/[&<>"']/g, c=> ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[c])); }
         function makeCardsCollapsible() { document.querySelectorAll('.panel .card:not(.chat-card) .section-title').forEach(title => { title.addEventListener('click', () => { title.closest('.card').classList.toggle('collapsed'); }); }); }
@@ -1344,13 +1383,19 @@
 
             peerConnection.onconnectionstatechange = () => {
               console.log(`[${state.role}] Connection state: ${peerConnection.connectionState}`);
-              if (state.role === 'host') {
-                  if (peerConnection.connectionState === 'connected') {
-                    showToast("Guest has connected!");
-                    autoSetLayout('split');
-                  } else if (['disconnected', 'closed', 'failed'].includes(peerConnection.connectionState)) {
-                    showToast("Guest has disconnected.");
-                    autoSetLayout('host');
+              if (peerConnection.connectionState === 'connected') {
+                  if (state.role === 'host') {
+                      showToast("Guest has connected!");
+                      autoSetLayout('split');
+                  } else { // Guest
+                      showToast("Connected to host!");
+                  }
+              } else if (['disconnected', 'closed', 'failed'].includes(peerConnection.connectionState)) {
+                  if (state.role === 'host') {
+                      showToast("Guest has disconnected.");
+                      autoSetLayout('host');
+                  } else {
+                      showToast("Disconnected from host.");
                   }
               }
               renderLayout();

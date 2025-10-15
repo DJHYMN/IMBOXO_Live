@@ -1258,12 +1258,14 @@
 
         // --- UPDATED: Add automatic layout switching ---
         function setupPeerConnection(peerConnection) {
-            peerConnection.ontrack = (event) => {
-                if (event.streams && event.streams[0]) {
-                    remoteVideoEl.srcObject = event.streams[0];
-                }
-            };
-            
+                    peerConnection.ontrack = (event) => {
+                        // --- THIS IS THE CRUCIAL DIAGNOSTIC LINE ---
+                        console.log("ONTRACK FIRED! A remote stream has arrived.", event);
+                        
+                        if (event.streams && event.streams[0]) {
+                            remoteVideoEl.srcObject = event.streams[0];
+                        }
+                    };
             peerConnection.onconnectionstatechange = () => {
               console.log(`Connection state: ${peerConnection.connectionState}`);
               

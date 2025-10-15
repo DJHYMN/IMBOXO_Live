@@ -930,8 +930,8 @@
           fill(speakerSel, devices, 'audiooutput');
         }
         function stopStream(stream) { if (!stream) return; stream.getTracks().forEach(t => t.stop()); }
-        async function requestMic(deviceId) { stopStream(mediaState.micStream); stopMicMeter(); const stream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: deviceId ? { exact: deviceId } : undefined, echoCancellation: true, noiseSuppression: true }, video: false }); mediaState.micStream = stream; setMicState(true); if (pc) { const sender = pc.getSenders().find(s => s.track?.kind === 'audio'); if (sender) sender.replaceTrack(stream.getAudioTracks()[0]); } return stream; }
-        async function requestCam(deviceId) { stopStream(mediaState.camStream); const stream = await navigator.mediaDevices.getUserMedia({ video: { deviceId: deviceId ? { exact: deviceId } : undefined, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false }); mediaState.camStream = stream; setCamState(true); if (pc) { const sender = pc.getSenders().find(s => s.track?.kind === 'video'); if (sender) sender.replaceTrack(stream.getVideoTracks()[0]); } return stream; }
+        async function requestMic(deviceId) { stopStream(mediaState.micStream); stopMicMeter(); const stream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: deviceId ? { exact: deviceId } : undefined, echoCancellation: true, noiseSuppression: true }, video: false }); mediaState.micStream = stream; setMicState(true); return stream; }
+        async function requestCam(deviceId) { stopStream(mediaState.camStream); const stream = await navigator.mediaDevices.getUserMedia({ video: { deviceId: deviceId ? { exact: deviceId } : undefined, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false }); mediaState.camStream = stream; setCamState(true); return stream; }
         
         function setCamState(on) {
             mediaState.camOn = on;
@@ -1156,13 +1156,16 @@
           }
         };
         
+        let permissionsInitialized = false;
         async function initPermissions() {
+          if (permissionsInitialized) return;
           try {
             const stream = await navigator.mediaDevices.getUserMedia({audio:true, video:true});
             await getDevices();
             stream.getTracks().forEach(track => track.stop());
             if(micSel.options.length > 0) await requestMic(micSel.value);
             if(camSel.options.length > 0) await requestCam(camSel.value);
+            permissionsInitialized = true;
           } catch(e) {
             console.warn('Permissions denied on initial load.', e);
             showToast("Could not get camera/mic permissions.");
@@ -1200,9 +1203,11 @@
 
             if (!USE_SIGNALING) {
                 showToast("Firebase is not configured. Cannot go live.");
-                console.warn("Firebase config is missing. Real 'Go Live' will not work.");
                 return;
             }
+
+            // --- FIX: Ensure media streams are ready BEFORE creating the connection ---
+            await initPermissions();
 
             btnGoLive.disabled = true;
             btnGoLive.textContent = 'Creating Room...';
@@ -1211,9 +1216,11 @@
             setupPeerConnection(pc);
 
             if (mediaState.micStream) {
+              console.log("Host: Adding Mic Track");
               mediaState.micStream.getTracks().forEach(track => pc.addTrack(track, mediaState.micStream));
             }
             if (mediaState.camStream) {
+              console.log("Host: Adding Cam Track");
               mediaState.camStream.getTracks().forEach(track => pc.addTrack(track, mediaState.camStream));
             }
 
@@ -1256,35 +1263,35 @@
             });
         }
 
-        // --- UPDATED: Add automatic layout switching ---
         function setupPeerConnection(peerConnection) {
-                    peerConnection.ontrack = (event) => {
-                        // --- THIS IS THE CRUCIAL DIAGNOSTIC LINE ---
-                        console.log("ONTRACK FIRED! A remote stream has arrived.", event);
-                        
-                        if (event.streams && event.streams[0]) {
-                            remoteVideoEl.srcObject = event.streams[0];
-                        }
-                    };
+            peerConnection.ontrack = (event) => {
+                console.log("ONTRACK FIRED! A remote stream has arrived.", event);
+                if (event.streams && event.streams[0]) {
+                    remoteVideoEl.srcObject = event.streams[0];
+                }
+            };
+
             peerConnection.onconnectionstatechange = () => {
               console.log(`Connection state: ${peerConnection.connectionState}`);
-              
-              // Only the host should control the layout
               if (state.role === 'host') {
                   if (peerConnection.connectionState === 'connected') {
                     showToast("Guest has connected!");
-                    autoSetLayout('split'); // Automatically switch to split view
+                    autoSetLayout('split');
                   } else if (['disconnected', 'closed', 'failed'].includes(peerConnection.connectionState)) {
                     showToast("Guest has disconnected.");
-                    autoSetLayout('host'); // Automatically switch back to host-only view
+                    autoSetLayout('host');
                   }
               }
-              renderLayout(); // All clients re-render to show/hide guest tile
+              renderLayout();
             };
         }
 
         async function joinRoom(roomId) {
             setRole('guest');
+
+            // --- FIX: Ensure media streams are ready BEFORE creating the connection ---
+            await initPermissions();
+
             roomRef = fbDb.ref(`rooms/${roomId}`);
             const snapshot = await roomRef.once('value');
             if (!snapshot.exists()) {
@@ -1296,9 +1303,11 @@
             setupPeerConnection(pc);
 
             if (mediaState.micStream) {
+              console.log("Guest: Adding Mic Track");
               mediaState.micStream.getTracks().forEach(track => pc.addTrack(track, mediaState.micStream));
             }
             if (mediaState.camStream) {
+              console.log("Guest: Adding Cam Track");
               mediaState.camStream.getTracks().forEach(track => pc.addTrack(track, mediaState.camStream));
             }
 
@@ -1377,13 +1386,18 @@
         if(btnEndNew) btnEndNew.onclick = () => { endModal.classList.add('open'); document.getElementById('btnEndForAll').style.display = state.role === 'host' ? 'block' : 'none'; }
         document.getElementById('btnEndCancel').onclick = () => endModal.classList.remove('open'); document.getElementById('btnLeave').onclick = () => { if(roomRef) roomRef.off(); if(pc) pc.close(); location.href = location.pathname; }; document.getElementById('btnEndForAll').onclick = () => { if(roomRef) { roomRef.remove().then(() => { location.href = location.pathname; }); } else { location.href = location.pathname; } };
         
+        // --- This is the main startup logic ---
         (async () => {
           try {
-            if (state.roomId && USE_SIGNALING) {
+            // This runs on page load. It determines if you are a host or guest.
+            if (state.roomId) {
               await joinRoom(state.roomId);
             } else {
               setRole('host');
+              await initPermissions(); // Host gets permissions on load
             }
+
+            // The rest of the setup
             mountLayoutGallery('studioGallery', false);
             mountLayoutGallery('cinemaGallery', true);
             mountLayoutGallery('shopGallery', false);
@@ -1401,7 +1415,6 @@
                 toggle.addEventListener('change', handleChatOverlayToggle);
             });
             
-            await initPermissions();
           } catch (err) {
             console.error("Failed to initialize the application:", err);
             showToast("A critical error occurred during setup.");

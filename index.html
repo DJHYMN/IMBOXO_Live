@@ -1264,21 +1264,21 @@
         }
 
         function setupPeerConnection(peerConnection) {
-            peerConnection.oniceconnectionstatechange = () => console.log(`ICE Connection State: ${peerConnection.iceConnectionState}`);
-            peerConnection.onsignalingstatechange = () => console.log(`Signaling State: ${peerConnection.signalingState}`);
+            peerConnection.oniceconnectionstatechange = () => console.log(`[${state.role}] ICE Connection State: ${peerConnection.iceConnectionState}`);
+            peerConnection.onsignalingstatechange = () => console.log(`[${state.role}] Signaling State: ${peerConnection.signalingState}`);
 
             peerConnection.ontrack = (event) => {
-                console.log("ONTRACK FIRED! A remote stream has arrived.", event);
+                console.log(`[${state.role}] ONTRACK FIRED! A remote stream has arrived.`, event);
                 if (event.streams && event.streams[0]) {
-                    console.log("Attaching remote stream to video element:", event.streams[0]);
+                    console.log(`[${state.role}] Attaching remote stream to video element:`, event.streams[0]);
                     remoteVideoEl.srcObject = event.streams[0];
                 } else {
-                    console.warn("Ontrack event fired but no streams found.");
+                    console.warn(`[${state.role}] Ontrack event fired but no streams found.`);
                 }
             };
 
             peerConnection.onconnectionstatechange = () => {
-              console.log(`Connection state: ${peerConnection.connectionState}`);
+              console.log(`[${state.role}] Connection state: ${peerConnection.connectionState}`);
               if (state.role === 'host') {
                   if (peerConnection.connectionState === 'connected') {
                     showToast("Guest has connected!");

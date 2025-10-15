@@ -105,13 +105,12 @@
     body[data-mode="cinema"] .only-shop-panel { display: none; }
     body[data-mode="shop"] .only-cinema,
     body[data-mode="shop"] .only-studio { display: none; }
-    body[data-role="guest"] .only-host { display: none; }
 
     /* --- STAGE VISIBILITY RULES --- */
     body[data-mode="cinema"] #stageStudio { display: none; }
     body:not([data-mode="cinema"]) #stageCinema { display: none; }
 
-    /* --- GUEST VIEW RULES (NEW) --- */
+    /* --- GUEST VIEW RULES --- */
     body[data-role="guest"] .shell { grid-template-columns: 1fr 320px; /* Make panel narrower for chat */ }
     body[data-role="guest"] .panel .card:not(.chat-card) { display: none; }
     body[data-role="guest"] header .btn.ghost.toggle { display: none; }
@@ -667,9 +666,9 @@
           const hostTile = makeTile('', 'Host'); hostTile.appendChild(hostVideoEl);
           const remoteTile = makeTile('', 'Guest'); remoteTile.appendChild(remoteVideoEl);
           if (state.layout === 'host') { hostTile.className = 'tile span-12'; stageStudio.appendChild(hostTile); }
-          else if (state.layout === 'split') { hostTile.className = 'tile span-6'; stageStudio.appendChild(hostTile); if (guestIsVisible) { remoteTile.className = 'tile span-6'; stageStudio.appendChild(remoteVideoEl); } else { stageStudio.appendChild(makeTile('span-6', '')); } }
-          else if (state.layout === '2x2') { hostTile.className = 'tile span-6'; stageStudio.appendChild(hostTile); if (guestIsVisible) { remoteTile.className = 'tile span-6'; stageStudio.appendChild(remoteVideoEl); } else { stageStudio.appendChild(makeTile('span-6', '')); } stageStudio.appendChild(makeTile('span-6', '')); stageStudio.appendChild(makeTile('span-6', '')); }
-          else if (state.layout === '3x3') { hostTile.className = 'tile span-4'; stageStudio.appendChild(hostTile); if (guestIsVisible) { remoteTile.className = 'tile span-4'; stageStudio.appendChild(remoteVideoEl); } else { stageStudio.appendChild(makeTile('span-4', '')); } for(let i=0; i<7; i++) stageStudio.appendChild(makeTile('span-4', '')); }
+          else if (state.layout === 'split') { hostTile.className = 'tile span-6'; stageStudio.appendChild(hostTile); if (guestIsVisible) { remoteTile.className = 'tile span-6'; stageStudio.appendChild(remoteTile); } else { stageStudio.appendChild(makeTile('span-6', '')); } }
+          else if (state.layout === '2x2') { hostTile.className = 'tile span-6'; stageStudio.appendChild(hostTile); if (guestIsVisible) { remoteTile.className = 'tile span-6'; stageStudio.appendChild(remoteTile); } else { stageStudio.appendChild(makeTile('span-6', '')); } stageStudio.appendChild(makeTile('span-6', '')); stageStudio.appendChild(makeTile('span-6', '')); }
+          else if (state.layout === '3x3') { hostTile.className = 'tile span-4'; stageStudio.appendChild(hostTile); if (guestIsVisible) { remoteTile.className = 'tile span-4'; stageStudio.appendChild(remoteTile); } else { stageStudio.appendChild(makeTile('span-4', '')); } for(let i=0; i<7; i++) stageStudio.appendChild(makeTile('span-4', '')); }
         }
         
         const videoEl = document.createElement('video'); videoEl.id='partyVideo'; videoEl.setAttribute('playsinline',''); videoEl.setAttribute('webkit-playsinline',''); videoEl.crossOrigin = "anonymous"; videoEl.controls=false;
@@ -692,19 +691,36 @@
             if (state.replaceHost) {
                 if (state.hostPiP && hostPiP.parentElement !== filmTile) { filmTile.appendChild(hostPiP); }
                 if (state.layout === 'host') { filmTile.className = 'tile span-12'; stageCinema.appendChild(filmTile); }
-                else if (state.layout === 'split') { filmTile.className = 'tile span-6'; stageCinema.appendChild(filmTile); if (guestIsVisible) { remoteTile.className = 'tile span-6'; stageCinema.appendChild(remoteVideoEl); } else { stageCinema.appendChild(makeTile('span-6', '')); } }
-                else if (state.layout === '2x2') { filmTile.className = 'tile span-6'; stageCinema.appendChild(filmTile); if (guestIsVisible) { remoteTile.className = 'tile span-6'; stageCinema.appendChild(remoteVideoEl); } else { stageCinema.appendChild(makeTile('span-6', '')); } stageCinema.appendChild(makeTile('span-6', '')); stageCinema.appendChild(makeTile('span-6', '')); }
-                else if (state.layout === '3x3') { filmTile.className = 'tile span-4'; stageCinema.appendChild(filmTile); if (guestIsVisible) { remoteTile.className = 'tile span-4'; stageCinema.appendChild(remoteVideoEl); } else { stageCinema.appendChild(makeTile('span-4', '')); } for (let i = 0; i < 7; i++) stageCinema.appendChild(makeTile('span-4', '')); }
+                else if (state.layout === 'split') { filmTile.className = 'tile span-6'; stageCinema.appendChild(filmTile); if (guestIsVisible) { remoteTile.className = 'tile span-6'; stageCinema.appendChild(remoteTile); } else { stageCinema.appendChild(makeTile('span-6', '')); } }
+                else if (state.layout === '2x2') { filmTile.className = 'tile span-6'; stageCinema.appendChild(filmTile); if (guestIsVisible) { remoteTile.className = 'tile span-6'; stageCinema.appendChild(remoteTile); } else { stageCinema.appendChild(makeTile('span-6', '')); } stageCinema.appendChild(makeTile('span-6', '')); stageCinema.appendChild(makeTile('span-6', '')); }
+                else if (state.layout === '3x3') { filmTile.className = 'tile span-4'; stageCinema.appendChild(filmTile); if (guestIsVisible) { remoteTile.className = 'tile span-4'; stageCinema.appendChild(remoteTile); } else { stageCinema.appendChild(makeTile('span-4', '')); } for (let i = 0; i < 7; i++) stageCinema.appendChild(makeTile('span-4', '')); }
             } else {
                 if (hostPiP.parentElement === filmTile) { filmTile.removeChild(hostPiP); }
                 if (state.layout === 'host') { hostTile.className = 'tile span-12'; stageCinema.appendChild(hostTile); }
                 else if (state.layout === 'split') { hostTile.className = 'tile span-6'; stageCinema.appendChild(hostTile); filmTile.className = 'tile span-6'; stageCinema.appendChild(filmTile); }
-                else if (state.layout === '2x2') { hostTile.className = 'tile span-6'; stageCinema.appendChild(hostTile); filmTile.className = 'tile span-6'; stageCinema.appendChild(filmTile); if (guestIsVisible) { remoteTile.className = 'tile span-6'; stageCinema.appendChild(remoteVideoEl); } else { stageCinema.appendChild(makeTile('span-6', '')); } stageCinema.appendChild(makeTile('span-6', '')); }
-                else if (state.layout === '3x3') { hostTile.className = 'tile span-4'; stageCinema.appendChild(hostTile); filmTile.className = 'tile span-4'; stageCinema.appendChild(filmTile); if (guestIsVisible) { remoteTile.className = 'tile span-4'; stageCinema.appendChild(remoteVideoEl); } else { stageCinema.appendChild(makeTile('span-4', '')); } for (let i = 0; i < 6; i++) stageCinema.appendChild(makeTile('span-4', '')); }
+                else if (state.layout === '2x2') { hostTile.className = 'tile span-6'; stageCinema.appendChild(hostTile); filmTile.className = 'tile span-6'; stageCinema.appendChild(filmTile); if (guestIsVisible) { remoteTile.className = 'tile span-6'; stageCinema.appendChild(remoteTile); } else { stageCinema.appendChild(makeTile('span-6', '')); } stageCinema.appendChild(makeTile('span-6', '')); }
+                else if (state.layout === '3x3') { hostTile.className = 'tile span-4'; stageCinema.appendChild(hostTile); filmTile.className = 'tile span-4'; stageCinema.appendChild(filmTile); if (guestIsVisible) { remoteTile.className = 'tile span-4'; stageCinema.appendChild(remoteTile); } else { stageCinema.appendChild(makeTile('span-4', '')); } for (let i = 0; i < 6; i++) stageCinema.appendChild(makeTile('span-4', '')); }
             }
         }
         
         function renderLayout(){ if(state.mode === 'studio' || state.mode === 'shop') renderStudio(); if(state.mode === 'cinema') renderCinema(); }
+
+        // --- NEW: Function to programmatically set layout ---
+        function autoSetLayout(newLayout) {
+            state.layout = newLayout;
+            // Update the UI buttons in all relevant galleries
+            ['studioGallery', 'cinemaGallery', 'shopGallery'].forEach(galleryId => {
+                const gallery = document.getElementById(galleryId);
+                if (gallery) {
+                    [...gallery.querySelectorAll('.layout-card')].forEach(card => {
+                        const isCorrectLayout = card.title.toLowerCase() === newLayout;
+                        card.setAttribute('aria-pressed', isCorrectLayout);
+                    });
+                }
+            });
+            renderLayout();
+            // Future: send({ type: 'layout_update', layout: newLayout });
+        }
 
         function layoutThumb(type, cinema=false) {
             const wrap = document.createElement('div');
@@ -736,7 +752,21 @@
             return wrap;
         }
         
-        function mountLayoutGallery(containerId, forCinema=false){ const container=document.getElementById(containerId); if(!container) return; container.innerHTML=''; ['host','split','2x2','3x3'].forEach(k=>{ const card=document.createElement('button'); card.className='layout-card'; card.setAttribute('aria-pressed', state.layout===k?'true':'false'); card.title=k; card.appendChild(layoutThumb(k,forCinema)); card.onclick=()=>{ state.layout=k; [...document.querySelectorAll('#' + containerId + ' .layout-card')].forEach(x=>x.setAttribute('aria-pressed','false')); card.setAttribute('aria-pressed','true'); renderLayout(); }; container.appendChild(card); }); }
+        // --- UPDATED: Use autoSetLayout for manual clicks ---
+        function mountLayoutGallery(containerId, forCinema=false){
+            const container=document.getElementById(containerId);
+            if(!container) return;
+            container.innerHTML='';
+            ['host','split','2x2','3x3'].forEach(k=>{
+                const card=document.createElement('button');
+                card.className='layout-card';
+                card.setAttribute('aria-pressed', state.layout===k?'true':'false');
+                card.title=k;
+                card.appendChild(layoutThumb(k,forCinema));
+                card.onclick=()=> autoSetLayout(k); // Use the new function
+                container.appendChild(card);
+            });
+        }
 
         const filmThumb=document.getElementById('filmThumb'), filmStatus=document.getElementById('filmStatus'), syncStateEl=document.getElementById('syncState'), chkReplaceHost=document.getElementById('chkReplaceHost'), chkHostPiP=document.getElementById('chkHostPiP'), pipRow=document.getElementById('pipRow'), btnPlay = document.getElementById('btnPlay'), btnChangeFilm = document.getElementById('btnChangeFilm');
         const films = [
@@ -1158,7 +1188,6 @@
 
         async function handleGoLiveClick() {
             if (state.isTesting) {
-                // (The existing test mode logic remains the same)
                 btnGoLive.textContent = '✓ Testing';
                 btnGoLive.style.background = 'var(--cyan)';
                 btnGoLive.style.color = 'var(--bg)';
@@ -1170,20 +1199,17 @@
             }
 
             if (!USE_SIGNALING) {
-                // (The existing fallback logic remains the same)
                 showToast("Firebase is not configured. Cannot go live.");
                 console.warn("Firebase config is missing. Real 'Go Live' will not work.");
                 return;
             }
 
-            // --- NEW LIVE LOGIC ---
             btnGoLive.disabled = true;
             btnGoLive.textContent = 'Creating Room...';
 
             pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
             setupPeerConnection(pc);
 
-            // Add local media tracks to the connection
             if (mediaState.micStream) {
               mediaState.micStream.getTracks().forEach(track => pc.addTrack(track, mediaState.micStream));
             }
@@ -1191,7 +1217,6 @@
               mediaState.camStream.getTracks().forEach(track => pc.addTrack(track, mediaState.camStream));
             }
 
-            // Reference to a new room in the 'rooms' collection
             roomRef = fbDb.ref('rooms').push();
             state.roomId = roomRef.key;
             
@@ -1202,23 +1227,20 @@
               }
             };
 
-            // Create offer
             const offerDescription = await pc.createOffer();
             await pc.setLocalDescription(offerDescription);
 
             const offer = { sdp: offerDescription.sdp, type: offerDescription.type, };
             await roomRef.set({ offer });
 
-            // Update UI
             roomIdLabel.textContent = state.roomId;
             roomPill.style.display = 'inline-flex';
             const newUrl = `${location.protocol}//${location.host}${location.pathname}?room=${state.roomId}`;
-            history.pushState({ path: newUrl }, '', newUrl); // Update URL without reloading
+            history.pushState({ path: newUrl }, '', newUrl);
             showToast("Room is live! Share the URL to invite guests.");
             btnGoLive.textContent = '✓ Live';
             btnGoLive.style.background = 'var(--ok)';
 
-            // Listen for the guest's answer
             roomRef.on('value', async snapshot => {
                 const data = snapshot.val();
                 if (!pc.currentRemoteDescription && data?.answer) {
@@ -1227,7 +1249,6 @@
                 }
             });
             
-            // Listen for guest's ICE candidates
             const answerCandidates = roomRef.child('answerCandidates');
             answerCandidates.on('child_added', snapshot => {
                 const candidate = new RTCIceCandidate(snapshot.val());
@@ -1235,26 +1256,33 @@
             });
         }
 
+        // --- UPDATED: Add automatic layout switching ---
         function setupPeerConnection(peerConnection) {
-            // When the remote user adds a track, display it in the remote video element
             peerConnection.ontrack = (event) => {
                 if (event.streams && event.streams[0]) {
                     remoteVideoEl.srcObject = event.streams[0];
                 }
             };
             
-            // Handle connection state changes for UI feedback
             peerConnection.onconnectionstatechange = () => {
               console.log(`Connection state: ${peerConnection.connectionState}`);
-              if (peerConnection.connectionState === 'connected') {
-                showToast("Guest has connected!");
-                renderLayout(); // Re-render layout to show guest
+              
+              // Only the host should control the layout
+              if (state.role === 'host') {
+                  if (peerConnection.connectionState === 'connected') {
+                    showToast("Guest has connected!");
+                    autoSetLayout('split'); // Automatically switch to split view
+                  } else if (['disconnected', 'closed', 'failed'].includes(peerConnection.connectionState)) {
+                    showToast("Guest has disconnected.");
+                    autoSetLayout('host'); // Automatically switch back to host-only view
+                  }
               }
+              renderLayout(); // All clients re-render to show/hide guest tile
             };
         }
 
         async function joinRoom(roomId) {
-            setRole('guest'); // Change role to guest
+            setRole('guest');
             roomRef = fbDb.ref(`rooms/${roomId}`);
             const snapshot = await roomRef.once('value');
             if (!snapshot.exists()) {
@@ -1265,7 +1293,6 @@
             pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
             setupPeerConnection(pc);
 
-            // Add local media tracks
             if (mediaState.micStream) {
               mediaState.micStream.getTracks().forEach(track => pc.addTrack(track, mediaState.micStream));
             }
@@ -1273,25 +1300,21 @@
               mediaState.camStream.getTracks().forEach(track => pc.addTrack(track, mediaState.camStream));
             }
 
-            // Listen for host's ICE candidates
             const offerCandidates = roomRef.child('offerCandidates');
             offerCandidates.on('child_added', snapshot => {
                 const candidate = new RTCIceCandidate(snapshot.val());
                 pc.addIceCandidate(candidate);
             });
 
-            // Set remote description from host's offer
             const offerDescription = snapshot.val().offer;
             await pc.setRemoteDescription(new RTCSessionDescription(offerDescription));
 
-            // Create Answer
             const answerDescription = await pc.createAnswer();
             await pc.setLocalDescription(answerDescription);
             
             const answer = { type: answerDescription.type, sdp: answerDescription.sdp, };
             await roomRef.update({ answer });
 
-            // Push guest's ICE candidates
             const answerCandidates = roomRef.child('answerCandidates');
             pc.onicecandidate = event => {
               if (event.candidate) {
@@ -1299,7 +1322,6 @@
               }
             };
 
-            // Update UI
             roomIdLabel.textContent = roomId;
             roomPill.style.display = 'inline-flex';
             btnGoLive.disabled = true;

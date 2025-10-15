@@ -8,7 +8,7 @@
     :root{
       /* Base palette */
       --bg:#0b0c13; --surface:#11131b; --glass:rgba(255,255,255,.06); --stroke:rgba(255,255,255,.18);
-      --text:#ecf0f5; --muted:#c9d2e3; --accent:#8f7cff; --cyan:#39e0ff; --ok:#47e2ac; --warn:#ffd45a; --danger:#ff6b6b;
+      --text:#ecf0f5; --muted:#c9d2e3; --accent:#8f7cff; --cyan:#39e0ff; --ok:#47e2ac; --warn:#ffd4a; --danger:#ff6b6b;
 
       /* Radii & rhythm */
       --r:16px; --r-sm:12px; --r-lg:20px;
@@ -705,7 +705,6 @@
         
         function renderLayout(){ if(state.mode === 'studio' || state.mode === 'shop') renderStudio(); if(state.mode === 'cinema') renderCinema(); }
 
-        // --- NEW: Function to programmatically set layout ---
         function autoSetLayout(newLayout) {
             state.layout = newLayout;
             ['studioGallery', 'cinemaGallery', 'shopGallery'].forEach(galleryId => {
@@ -839,16 +838,17 @@
         }
         function hostSeek(delta){ if(!state.filmLoaded) return; videoEl.currentTime=Math.max(0, videoEl.currentTime+delta); send({type:'seek',pos:videoEl.currentTime,t:performance.now()}); }
         onMsg(m=>{
+            if (m.type === 'chat') {
+                [chatLogStudio, chatLogCinema, chatLogShop].forEach(log => addChat(log, m));
+                showOverlayMessage(m);
+                return;
+            }
             if(state.role === 'guest') {
                 if(m.type==='play'){ gentlySeekTo(m.pos + (performance.now()-m.t)/1000); videoEl.play(); setupOutputAudioProcessing(); }
                 if(m.type==='pause'){ gentlySeekTo(m.pos); videoEl.pause(); }
                 if(m.type==='seek'){ gentlySeekTo(m.pos); }
                 if(m.type==='tick' && !videoEl.paused){ gentlySeekTo(m.pos + (performance.now()-m.t)/1000); }
                 if(m.type==='layout_change') { autoSetLayout(m.layout); }
-            }
-            if (m.type === 'chat') {
-                [chatLogStudio, chatLogCinema, chatLogShop].forEach(log => addChat(log, m));
-                showOverlayMessage(m);
             }
         });
         setInterval(()=>{ if(state.role==='host' && state.playing) send({type:'tick',pos:videoEl.currentTime,t:performance.now()}); }, 1500);
@@ -1232,7 +1232,7 @@
                     const offerDescription = await pc.createOffer();
                     await pc.setLocalDescription(offerDescription);
                     const offer = { sdp: offerDescription.sdp, type: offerDescription.type };
-                    await roomRef.set({ offer });
+                    await roomRef.child('offer').set(offer);
                     console.log("Host: Offer set in Firebase.");
                 } catch (err) {
                     console.error("Host: Error during negotiation:", err);
@@ -1442,6 +1442,17 @@
                 toggle.addEventListener('change', handleChatOverlayToggle);
             });
             
+            // Listen for messages from the host
+            if (state.roomId) {
+                const messagesRef = fbDb.ref(`rooms/${state.roomId}/messages`);
+                messagesRef.on('child_added', snapshot => {
+                    const message = snapshot.val();
+                    if (message) {
+                        bus.dispatchEvent(new CustomEvent('m',{detail:message}));
+                    }
+                });
+            }
+
           } catch (err) {
             console.error("Failed to initialize the application:", err);
             showToast("A critical error occurred during setup.");

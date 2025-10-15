@@ -1205,8 +1205,7 @@
                 showToast("Firebase is not configured. Cannot go live.");
                 return;
             }
-
-            // --- FIX: Ensure media streams are ready BEFORE creating the connection ---
+            
             await initPermissions();
 
             btnGoLive.disabled = true;
@@ -1215,6 +1214,29 @@
             pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
             setupPeerConnection(pc);
 
+            // --- NEW LOGIC: Use onnegotiationneeded to create the offer ---
+            pc.onnegotiationneeded = async () => {
+                try {
+                    console.log("Host: onnegotiationneeded event fired. Creating offer...");
+                    const offerDescription = await pc.createOffer();
+                    await pc.setLocalDescription(offerDescription);
+                    const offer = { sdp: offerDescription.sdp, type: offerDescription.type };
+                    await roomRef.set({ offer });
+                    console.log("Host: Offer set in Firebase.");
+                } catch (err) {
+                    console.error("Host: Error during negotiation:", err);
+                }
+            };
+            
+            roomRef = fbDb.ref('rooms').push();
+            state.roomId = roomRef.key;
+
+            const offerCandidates = roomRef.child('offerCandidates');
+            pc.onicecandidate = event => {
+              if (event.candidate) { offerCandidates.push(event.candidate.toJSON()); }
+            };
+
+            // Add tracks AFTER setting up onnegotiationneeded. This will trigger the event.
             if (mediaState.micStream) {
               console.log("Host: Adding Mic Track");
               mediaState.micStream.getTracks().forEach(track => pc.addTrack(track, mediaState.micStream));
@@ -1223,22 +1245,6 @@
               console.log("Host: Adding Cam Track");
               mediaState.camStream.getTracks().forEach(track => pc.addTrack(track, mediaState.camStream));
             }
-
-            roomRef = fbDb.ref('rooms').push();
-            state.roomId = roomRef.key;
-            
-            const offerCandidates = roomRef.child('offerCandidates');
-            pc.onicecandidate = event => {
-              if (event.candidate) {
-                offerCandidates.push(event.candidate.toJSON());
-              }
-            };
-
-            const offerDescription = await pc.createOffer();
-            await pc.setLocalDescription(offerDescription);
-
-            const offer = { sdp: offerDescription.sdp, type: offerDescription.type, };
-            await roomRef.set({ offer });
 
             roomIdLabel.textContent = state.roomId;
             roomPill.style.display = 'inline-flex';
@@ -1250,7 +1256,8 @@
 
             roomRef.on('value', async snapshot => {
                 const data = snapshot.val();
-                if (!pc.currentRemoteDescription && data?.answer) {
+                if (data?.answer && pc.signalingState !== 'stable') {
+                    console.log("Host: Received answer. Setting remote description.");
                     const answerDescription = new RTCSessionDescription(data.answer);
                     await pc.setRemoteDescription(answerDescription);
                 }
@@ -1288,14 +1295,13 @@
                     autoSetLayout('host');
                   }
               }
+              // Guests will now also re-render when the connection state changes
               renderLayout();
             };
         }
 
         async function joinRoom(roomId) {
             setRole('guest');
-
-            // --- FIX: Ensure media streams are ready BEFORE creating the connection ---
             await initPermissions();
 
             roomRef = fbDb.ref(`rooms/${roomId}`);
@@ -1308,6 +1314,7 @@
             pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
             setupPeerConnection(pc);
 
+            // Add local media BEFORE setting remote description
             if (mediaState.micStream) {
               console.log("Guest: Adding Mic Track");
               mediaState.micStream.getTracks().forEach(track => pc.addTrack(track, mediaState.micStream));
@@ -1323,14 +1330,17 @@
                 pc.addIceCandidate(candidate);
             });
 
+            console.log("Guest: Setting remote description (offer).");
             const offerDescription = snapshot.val().offer;
             await pc.setRemoteDescription(new RTCSessionDescription(offerDescription));
 
+            console.log("Guest: Creating answer.");
             const answerDescription = await pc.createAnswer();
             await pc.setLocalDescription(answerDescription);
             
             const answer = { type: answerDescription.type, sdp: answerDescription.sdp, };
             await roomRef.update({ answer });
+            console.log("Guest: Answer sent to Firebase.");
 
             const answerCandidates = roomRef.child('answerCandidates');
             pc.onicecandidate = event => {

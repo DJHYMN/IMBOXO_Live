@@ -1,179 +1,1384 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Video Sync Test</title>
-    <style> 
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            background-color: #121212;
-            color: #e0e0e0;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            height: 100vh;
-            margin: 0;
-        }
-        .container {
-            width: 90%;
-            max-width: 800px;
-            text-align: center;
-        }
-        video {
-            width: 100%;
-            border-radius: 8px;
-            background-color: #000;
-        }
-        .controls {
-            margin: 20px 0;
-        }
-        button {
-            padding: 10px 20px;
-            font-size: 16px;
-            cursor: pointer;
-            border: 1px solid #444;
-            background-color: #2a2a2a;
-            color: #e0e0e0;
-            border-radius: 5px;
-            margin: 0 10px;
-        }
-        button.active {
-            background-color: #007bff;
-            color: white;
-            border-color: #007bff;
-        }
-        h1 {
-            margin-bottom: 10px;
-        }
-        #status {
-            margin-top: 15px;
-            font-style: italic;
-            color: #aaa;
-        }
-    </style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>IMBOXO Live — Studio • Cinema • Shop</title>
+  <style>
+    :root{
+      /* Base palette */
+      --bg:#0b0c13; --surface:#11131b; --glass:rgba(255,255,255,.06); --stroke:rgba(255,255,255,.18);
+      --text:#ecf0f5; --muted:#c9d2e3; --accent:#8f7cff; --cyan:#39e0ff; --ok:#47e2ac; --warn:#ffd45a; --danger:#ff6b6b;
+
+      /* Radii & rhythm */
+      --r:16px; --r-sm:12px; --r-lg:20px;
+      --sp-8:8px; --sp-10:10px; --sp-12:12px;
+
+      /* Motion (200–520ms) */
+      --t-fast:.2s; --t-mid:.32s; --t-slow:.52s;
+
+      /* Glow system (unified) */
+      --glow-soft: 0 0 0 1px rgba(143,124,255,.40) inset, 0 10px 30px rgba(0,0,0,.45);
+      --glow-strong: 0 0 0 1px rgba(143,124,255,.55) inset, 0 0 28px rgba(143,124,255,.25), 0 0 80px rgba(57,224,255,.18);
+      --shadow: 0 10px 30px rgba(0,0,0,.45), 0 0 0 1px var(--stroke) inset;
+    }
+    
+    @keyframes pulse-glow {
+      0% { box-shadow: 0 0 8px 0px var(--ok), 0 0 0 1px var(--ok); }
+      70% { box-shadow: 0 0 16px 4px var(--ok), 0 0 0 1px var(--ok); }
+      100% { box-shadow: 0 0 8px 0px var(--ok), 0 0 0 1px var(--ok); }
+    }
+    
+    @keyframes pulse-accent-glow {
+      0% { box-shadow: 0 0 8px 0px var(--accent), 0 0 0 1px var(--accent); }
+      70% { box-shadow: 0 0 16px 4px color-mix(in oklab, var(--accent) 50%, transparent), 0 0 0 1px var(--accent); }
+      100% { box-shadow: 0 0 8px 0px var(--accent), 0 0 0 1px var(--accent); }
+    }
+
+    @keyframes pulse-record-glow {
+      0% { box-shadow: 0 0 8px 0px var(--danger), 0 0 0 1px var(--danger); }
+      70% { box-shadow: 0 0 18px 5px color-mix(in oklab, var(--danger) 50%, transparent), 0 0 0 1px var(--danger); }
+      100% { box-shadow: 0 0 8px 0px var(--danger), 0 0 0 1px var(--danger); }
+    }
+
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0; color:var(--text);
+      background:
+        radial-gradient(1200px 600px at 6% -10%, color-mix(in oklab, var(--accent) 20%, transparent), transparent 70%),
+        radial-gradient(1200px 600px at 95% 110%, color-mix(in oklab, var(--cyan) 18%, transparent), transparent 70%),
+        var(--bg);
+      font:14px/1.45 Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+      display:grid; grid-template-rows:auto 1fr auto; gap:var(--sp-12);
+    }
+
+    /* Header */
+    header{
+      position:sticky; z-index:10; top:0;
+      padding:var(--sp-10) 14px; display:flex; gap:var(--sp-12); align-items:center;
+      background:linear-gradient(180deg, rgba(12,14,22,.88), rgba(12,14,22,.66));
+      backdrop-filter: blur(8px) saturate(140%);
+      box-shadow:var(--shadow);
+    }
+
+    .brand{display:flex; align-items:center; gap:15px; font-weight:800; letter-spacing:.2px; font-size: 21px;}
+    .dot{width:18px;height:18px;border-radius:50%;
+      background:radial-gradient(circle at 30% 30%, #fff, var(--accent) 35%, #4a3bc1 60%);
+      box-shadow:0 0 14px rgba(143,124,255,.6)
+    }
+
+    /* Buttons */
+    .btn{
+      border:1px solid var(--stroke);
+      background:linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.02));
+      color:var(--text); border-radius:var(--r-sm); padding:8px 16px; cursor:pointer;
+      font-size: 15px; font-weight: 500;
+      transition:transform var(--t-fast) ease, border-color var(--t-mid), box-shadow var(--t-mid), background var(--t-mid), color var(--t-mid);
+    }
+    .btn:hover{transform:translateY(-1px); border-color:rgba(143,124,255,.55); box-shadow:var(--glow-strong)}
+    .btn.primary{background:linear-gradient(180deg, color-mix(in oklab, var(--accent) 78%, #ffffff 0%), color-mix(in oklab, var(--accent) 58%, #000 0%)); border-color:rgba(143,124,255,.7); box-shadow:var(--glow-strong)}
+    .btn.danger{background:linear-gradient(180deg, color-mix(in oklab, var(--danger) 78%, #ffffff 0%), color-mix(in oklab, var(--danger) 58%, #000 0%)); border-color:rgba(255,107,107,.7);}
+    .btn.pill{border-radius:999px}
+    .btn.ghost{background:transparent}
+    .toggle[aria-pressed="true"]{outline:2px solid var(--accent); background:linear-gradient(180deg, rgba(143,124,255,.32), rgba(143,124,255,.12))}
+    .btn:disabled { cursor: not-allowed; opacity: 0.6; }
+
+    .pill{display:inline-flex; align-items:center; gap:8px; padding:6px 10px; border-radius:999px; border:1px solid var(--stroke); background:var(--glass); color:var(--muted); font-size:12px}
+
+    /* Layout shell */
+    main{padding:0 14px 10px; min-height:0; height:calc(100vh - 160px);}
+    .shell{display:grid; grid-template-columns:1fr 400px; gap:var(--sp-12); height:100%;}
+    .canvas{
+      position:relative; border-radius:var(--r);
+      background:linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.01));
+      border:1px solid var(--stroke); box-shadow:var(--shadow); overflow:hidden; min-height:0
+    }
+    .panel{border-radius:var(--r); background:var(--surface); border:1px solid var(--stroke); box-shadow:var(--shadow); display:flex; flex-direction:column; min-height:0}
+    .panel-scroll{padding:var(--sp-12); display:flex; flex-direction:column; gap:var(--sp-12); overflow:auto; flex:1}
+
+    /* --- Core Mode Visibility --- */
+    body:not([data-mode="shop"]) #productSpotlight { display: none !important; }
+    body[data-mode="studio"] .only-cinema,
+    body[data-mode="studio"] .only-shop-panel { display: none; }
+    body[data-mode="cinema"] .only-studio,
+    body[data-mode="cinema"] .only-shop-panel { display: none; }
+    body[data-mode="shop"] .only-cinema,
+    body[data-mode="shop"] .only-studio { display: none; }
+    body[data-role="guest"] .only-host { display: none; }
+
+    /* --- STAGE VISIBILITY RULES --- */
+    body[data-mode="cinema"] #stageStudio { display: none; }
+    body:not([data-mode="cinema"]) #stageCinema { display: none; }
+
+    .stage{position:absolute; inset:var(--sp-12); display:grid; gap:10px; grid-template-columns: repeat(12, 1fr); grid-auto-rows:minmax(90px,1fr)}
+    .tile{position:relative; border:1px solid var(--stroke); border-radius:14px; background:linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02)); box-shadow:var(--shadow); overflow:hidden}
+    .label{position:absolute; left:8px; bottom:8px; font-size:12px; color:#d5d9e3; background:rgba(11,12,19,.6); padding:4px 8px; border-radius:10px; border:1px solid rgba(255,255,255,.08)}
+    .span-12{grid-column: span 12} .span-6{grid-column: span 6} .span-4{grid-column: span 4}
+    #partyVideo, .host-video-el, #remote-video{width:100%; height:100%; object-fit:cover; display:block; border-radius:14px}
+    .pip{position:absolute; right:8px; bottom:8px; width:22%; aspect-ratio:16/9; border:2px solid rgba(255,255,255,.6); border-radius:6px; background:rgba(0,0,0,.4); overflow:hidden;}
+
+    /* Cards & UI */
+    .card{border:1px solid var(--stroke); border-radius:14px; background:linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02)); box-shadow:var(--shadow); padding:12px}
+    .section-title{font-weight:800; margin:0 0 8px; letter-spacing:.2px; font-size: 15px;}
+    .row{display:flex; gap:8px; flex-wrap:wrap; align-items:center}
+    .stack{display:flex; flex-direction:column; gap:10px; flex:1; min-height:0}
+    
+    select {
+      -webkit-appearance: none; appearance: none;
+      width: 100%; background-color: rgba(255,255,255,.06);
+      border: 1px solid var(--stroke); color: var(--text);
+      padding: 10px 36px 10px 12px; border-radius: 10px;
+      font-size: 14px; cursor: pointer;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+      background-repeat: no-repeat; background-position: right 10px center;
+    }
+    input[type="text"] {
+      width: 100%; background: rgba(255,255,255,.06);
+      border: 1px solid var(--stroke); color: var(--text);
+      padding: 10px 12px; border-radius: 10px;
+      font-size: 15px;
+    }
+    input[type="text"]::placeholder {
+      color: #8a91a0;
+      font-size: 15px;
+    }
+
+    .card .section-title { cursor: pointer; display: flex; justify-content: space-between; align-items: center; user-select:none; }
+    .card:not(.chat-card) .section-title::after { content: '−'; font-family: monospace; font-size: 20px; color: var(--muted); transition: transform var(--t-fast); padding: 0 8px; }
+    .card.collapsed .section-title::after { content: '+'; }
+    .card.collapsed > *:not(.section-title) { display: none; }
+    
+    .layout-gallery{display:grid; grid-template-columns:repeat(4, 1fr); gap:10px;}
+    .layout-card{padding:8px; background:var(--surface); border-radius: 12px; cursor: pointer; transition:transform var(--t-fast) ease, box-shadow var(--t-mid), border var(--t-mid); border: 2px solid transparent;}
+    .layout-card:hover{transform:translateY(-1px); box-shadow: var(--glow-strong);}
+    .layout-card[aria-pressed="true"]{border-color: var(--accent); box-shadow: var(--glow-strong);}
+    .layout-thumb{width:100%; aspect-ratio: 16/10; border-radius:8px; background:var(--bg); border:1px solid rgba(255,255,255,.12); position:relative; overflow:hidden; box-shadow:inset 0 0 0 1px rgba(255,255,255,.06); display: grid; gap: 3px; padding: 5px;}
+    .blk{border-radius:4px; background:rgba(255,255,255,.18);}
+    .blk.host, .blk.film{background:var(--accent);}
+    
+    .log{border:1px solid var(--stroke); border-radius:10px; padding:8px; background:rgba(255,255,255,.02); overflow:auto}
+    .input-row{display:flex; gap:6px}
+    .p-img{height:180px; border-radius:10px; border:1px solid rgba(255,255,255,.08); background:#171824 center/cover no-repeat}
+    .p-title{font-weight:700} .p-price{color:#dfe4ee}
+    .card.chat-card{display:flex; flex-direction:column; flex:1; min-height:0}
+    .card.chat-card .log{flex:1; min-height:0; max-height:unset}
+    
+    /* Toast, Tooltips, Toggles */
+    .toast { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); padding: 10px 16px; border-radius: 12px; background: var(--accent); color: white; font-weight: 500; z-index: 100; opacity: 0; transition: opacity .3s ease, transform .3s ease; }
+    .toast.show { opacity: 1; transform: translate(-50%, 10px); }
+    .tip{position:relative}
+    .tip[data-tip]:hover::after{ content:attr(data-tip); position:absolute; bottom:calc(100% + 8px); left:50%; transform:translateX(-50%); background:rgba(15,17,26,.92); color:#fff; font-size:12px; padding:6px 8px; border-radius:8px; border:1px solid rgba(255,255,255,.15); white-space:nowrap; pointer-events:none; box-shadow:var(--shadow); }
+    
+    .toggle-group { display: flex; align-items: center; gap: 8px; }
+    .toggle-group label { font-size: 12px; font-weight: 500; color: var(--muted); cursor: pointer; }
+    .switch { position: relative; display: inline-block; width: 40px; height: 22px; }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .slider { position: absolute; cursor: pointer; inset: 0; background-color: rgba(255,255,255,.1); border-radius: 34px; transition: .4s; }
+    .slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 3px; bottom: 3px; background-color: white; border-radius: 50%; transition: .4s; }
+    input:checked + .slider:before {
+      transform: translateX(18px);
+    }
+    input:checked + .slider { background-color: var(--cyan); }
+    input.accent:checked + .slider { background-color: var(--accent); }
+
+    /* --- CHAT OVERLAY STYLES --- */
+    .canvas-chat-overlay { position: absolute; bottom: 24px; left: 24px; width: 40%; max-height: 40%; display: flex; flex-direction: column; gap: 8px; z-index: 5; pointer-events: none; mask-image: linear-gradient(to bottom, transparent, black 25%); }
+    .canvas-chat-overlay.hidden { display: none; }
+    .canvas-chat-msg { padding: 10px 14px; border-radius: 12px; background: rgba(11, 12, 19, 0.75); backdrop-filter: blur(8px); border: 1px solid rgba(255, 255, 255, 0.1); color: var(--text); font-size: 16px; line-height: 1.4; opacity: 0; transform: translateY(10px); transition: opacity .4s ease, transform .4s ease; max-width: 500px; align-self: flex-start; }
+    .canvas-chat-msg.visible { opacity: 1; transform: translateY(0); }
+    .canvas-chat-msg strong { color: var(--accent); }
+
+    /* --- SHOP STYLES (UPDATED POSITIONING) --- */
+    .btn-highlight.is-live { background: var(--ok); color: var(--bg); border-color: var(--ok); font-weight: 700; animation: pulse-glow 2.5s infinite; }
+    .product-spotlight { position: absolute; bottom: 24px; right: 24px; width: 320px; z-index: 7; border-radius: var(--r-sm); border: 1px solid var(--stroke); background: rgba(17,19,27,.85); backdrop-filter: blur(10px); padding: 12px; display: flex; gap: 12px; align-items: center; box-shadow: 0 10px 40px rgba(0,0,0,.4); opacity: 0; transform: translateY(20px); pointer-events: none; transition: opacity .4s ease, transform .4s ease; }
+    .product-spotlight.open { opacity: 1; transform: translateY(0); pointer-events: auto; }
+    .product-spotlight img { width: 80px; height: 80px; object-fit: cover; border-radius: 10px; flex-shrink: 0; }
+    .product-spotlight .info { display: flex; flex-direction: column; gap: 6px; min-width: 0; flex: 1; }
+    .product-spotlight .p-title { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .product-spotlight .row { justify-content: space-between; }
+    
+    @media (max-width:1180px){ .shell{grid-template-columns:1fr} }
+    .canvas::before{content:""; position:absolute; inset:-2px; pointer-events:none; background: radial-gradient(240px 200px at var(--mx, -100px) var(--my, -100px), rgba(143,124,255,.14), transparent 60%) }
+
+    /* Footer & Menus (New) */
+    footer {
+      position: sticky; bottom: 0; z-index: 10;
+      padding: 16px;
+      display: flex; justify-content: center;
+    }
+    .footer-wrap-new {
+      display: flex; align-items: center; gap: 10px;
+      background: rgba(17,19,27,.75);
+      backdrop-filter: blur(12px) saturate(140%);
+      border: 1px solid var(--stroke);
+      padding: 10px 20px;
+      border-radius: 999px;
+      box-shadow: 0 10px 30px rgba(0,0,0,.3);
+    }
+    .ctl-btn-new {
+      width: 48px; height: 48px; border-radius: 50%;
+      background: transparent; border: none;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer; color: var(--muted);
+      transition: background-color .2s ease, color .2s ease, border .2s ease;
+      position: relative;
+    }
+    .ctl-btn-new:hover {
+      background: var(--glass);
+      color: var(--text);
+    }
+    .ctl-btn-new[aria-pressed="true"] {
+      background: var(--accent);
+      color: white;
+      box-shadow: 0 0 16px 0px var(--accent);
+    }
+    .ctl-btn-new svg { width: 28px; height: 28px; }
+    #btnEndNew {
+      padding-left: 20px; padding-right: 20px;
+      font-size: 16px; font-weight: 700;
+    }
+    
+    .ctl-btn-new .icon-off { display: none; }
+    .ctl-btn-new.is-muted .icon-on { display: none; }
+    .ctl-btn-new.is-muted .icon-off { display: block; }
+    
+    .ctl-group-new {
+      display: flex;
+      align-items: center;
+      border-radius: 999px;
+      transition: background-color var(--t-fast);
+    }
+    .ctl-group-new:hover {
+      background-color: var(--glass);
+    }
+    .ctl-caret-new {
+      height: 48px;
+      padding: 0 8px 0 2px;
+      cursor: pointer;
+      background: none;
+      border: none;
+      color: var(--muted);
+    }
+    .ctl-caret-new svg {
+      width: 20px;
+      height: 20px;
+      stroke: currentColor;
+      stroke-width: 2;
+      fill: none;
+    }
+    .audio-meter {
+      width: 28px; height: 20px;
+      display: none;
+      justify-content: space-between; align-items: flex-end;
+      margin: 0 4px;
+    }
+    .ctl-group-new.is-active .audio-meter {
+      display: flex;
+    }
+    .audio-meter > i {
+      display: block; width: 5px; height: 10%;
+      background-color: var(--ok);
+      border-radius: 2px;
+      transition: height 0.1s linear, background-color 0.1s linear;
+    }
+
+    #btnRecordNew {
+      border: 2px solid var(--danger);
+      color: var(--danger);
+    }
+    #btnRecordNew:hover {
+      background: rgba(255,107,107,.25);
+      color: var(--danger);
+    }
+    #btnRecordNew[aria-pressed="true"] {
+      background: var(--danger);
+      color: white;
+      animation: pulse-record-glow 1.5s infinite;
+      border-color: var(--danger);
+    }
+
+    .context-menu { position: fixed; z-index: 20; bottom: 100px; background: var(--surface); border: 1px solid var(--stroke); box-shadow: var(--shadow); border-radius: var(--r); padding: var(--sp-12); display: none; flex-direction: column; gap: 8px; width: 320px; }
+    
+    #plusMenu { padding: 8px; gap: 4px; }
+    .plus-menu-item {
+        display: flex; align-items: center; gap: 12px;
+        width: 100%;
+        padding: 10px; border-radius: 8px;
+        background: none; border: none;
+        color: var(--muted); font-size: 15px; font-weight: 500;
+        cursor: pointer; text-align: left;
+    }
+    .plus-menu-item:hover {
+        background: var(--accent);
+        color: white;
+    }
+    .plus-menu-item svg {
+        width: 24px; height: 24px;
+        stroke: currentColor; stroke-width: 1.8; fill: none;
+    }
+    .plus-menu-item:disabled { cursor: not-allowed; opacity: 0.5; background: none; color: var(--muted); }
+    
+    .gain-slider-container { display: flex; flex-direction: column; gap: 4px; padding-top: 8px; }
+    .gain-slider-container label { font-size: 12px; font-weight: 500; color: var(--muted); display: flex; justify-content: space-between; }
+    input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; background: transparent; cursor: pointer; }
+    input[type=range]::-webkit-slider-runnable-track { height: 6px; background: var(--glass); border-radius: 3px; }
+    input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; margin-top: -5px; height: 16px; width: 16px; background-color: var(--text); border-radius: 50%; border: 2px solid var(--surface); }
+    input[type=range]::-moz-range-track { height: 6px; background: var(--glass); border-radius: 3px; }
+    input[type=range]::-moz-range-thumb { height: 16px; width: 16px; background-color: var(--text); border-radius: 50%; border: 2px solid var(--surface); }
+
+
+    .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.5); backdrop-filter: blur(4px); z-index: 100; display: flex; align-items: center; justify-content: center; opacity: 0; pointer-events: none; transition: opacity .3s ease; }
+    .modal-overlay.open { opacity: 1; pointer-events: auto; }
+    .modal-dialog { background: var(--surface); border: 1px solid var(--stroke); box-shadow: var(--shadow); border-radius: var(--r); padding: 20px; width: min(400px, 90vw); display: flex; flex-direction: column; gap: 12px; }
+
+    #btnPlay.is-playing { border-color: var(--ok); color: var(--ok); box-shadow: 0 0 16px 0px var(--ok); }
+    #btnPlay.prompt-glow {
+        border-color: var(--accent);
+        animation: pulse-accent-glow 2.5s infinite;
+    }
+    #filmThumb { border: 2px solid transparent; transition: border-color .3s ease, box-shadow .3s ease; }
+    #filmThumb.is-ready { border-color: var(--ok); box-shadow: 0 0 16px 0px var(--ok); }
+    .film-select-card { background: var(--surface); border: 1px solid var(--stroke); border-radius: var(--r-sm); cursor: pointer; transition: transform var(--t-fast) ease, box-shadow var(--t-mid), border-color var(--t-mid); overflow: hidden; }
+    .film-select-card:hover { transform: translateY(-4px); box-shadow: var(--glow-strong); border-color: var(--accent); }
+    .film-select-card img { width: 100%; aspect-ratio: 16/10; object-fit: cover; display: block; }
+    .film-select-card .title { padding: 10px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    #hostCatalogList { max-height: 154px; overflow-y: auto; transition: max-height 0.4s ease-in-out; }
+    #hostCatalogList.expanded { max-height: 300px; }
+    #hostCatalogList::-webkit-scrollbar { width: 8px; }
+    #hostCatalogList::-webkit-scrollbar-track { background: transparent; }
+    #hostCatalogList::-webkit-scrollbar-thumb { background-color: var(--glass); border-radius: 10px; border: 2px solid transparent; background-clip: content-box; }
+    #hostCatalogList::-webkit-scrollbar-thumb:hover { background-color: rgba(255,255,255,.12); }
+
+    .emoji-bar { display: flex; gap: 6px; margin-top: 8px; }
+    .emoji-btn { border: none; background: transparent; border-radius: 8px; padding: 6px; font-size: 24px; line-height: 1; cursor: pointer; transition: transform var(--t-fast), background var(--t-fast); flex: 1; }
+    .emoji-btn:hover { background: rgba(143, 124, 255, .25); transform: scale(1.2) rotate(-10deg); }
+    
+    [id^="chatSend"] {
+      border-color: var(--accent);
+      animation: pulse-accent-glow 2.5s infinite;
+    }
+  </style>
 </head>
-<body>
 
-    <div class="container">
-        <h1>Video Sync Session</h1>
-
-        <video id="localVideoInput" controls src="https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"></video>
-        
-        <div id="status">Please select your role to begin.</div>
-
-        <div class="controls">
-            <button id="hostBtn">Become Host</button>
-            <button id="guestBtn">Become Guest</button>
-        </div>
+<body data-mode="studio" data-role="host">
+  <header>
+    <div class="brand"><span class="dot"></span> IMBOXO Live</div>
+    <div class="pill" id="roomPill" style="display:none;">
+        <span class="dot" style="background:var(--ok); box-shadow: 0 0 8px #47e2ac;"></span>
+        Room: <strong id="roomIdLabel"></strong>
     </div>
+    <div style="margin-left:auto; display:flex; gap:8px">
+      <button class="btn ghost toggle" id="btnModeStudio" aria-pressed="true">Studio</button>
+      <button class="btn ghost toggle" id="btnModeCinema" aria-pressed="false">Cinema</button>
+      <button class="btn ghost toggle" id="btnModeShop"   aria-pressed="false">Shop</button>
+    </div>
+    <div class="pill">Role: <strong id="roleTxt">Host</strong></div>
+    <div class="toggle-group only-host">
+      <label for="testModeCheck">Test Mode</label>
+      <label class="switch">
+        <input type="checkbox" id="testModeCheck" checked>
+        <span class="slider"></span>
+      </label>
+    </div>
+    <button class="btn primary" id="btnGoLive">Go Live</button>
+  </header>
 
-<script>
-// This is the most important part!
-// It ensures the code doesn't run until the HTML is fully loaded.
-document.addEventListener('DOMContentLoaded', () => {
+  <main>
+    <section class="shell">
+      <div class="canvas" id="canvas">
+        <div class="stage" id="stageStudio"></div>
+        <div class="stage" id="stageCinema"></div>
+        <div class="product-spotlight" id="productSpotlight"></div>
+        <div class="canvas-chat-overlay" id="canvasChatOverlay"></div>
+      </div>
+      <aside class="panel">
+        <div class="panel-scroll">
+          <div class="only-studio stack">
+            <div class="card">
+              <div class="section-title">Studio Layout</div>
+              <div id="studioGallery" class="layout-gallery" aria-label="Studio Layouts"></div>
+            </div>
+            <div class="card chat-card">
+              <div class="section-title">
+                <span>Chat</span>
+                <div class="toggle-group">
+                  <label for="chatOverlayToggleStudio">Overlay</label>
+                  <label class="switch">
+                    <input type="checkbox" class="chat-overlay-toggle-input accent" id="chatOverlayToggleStudio" checked>
+                    <span class="slider"></span>
+                  </label>
+                </div>
+              </div>
+              <div class="log" id="chatLogStudio" aria-live="polite"></div>
+              <div class="input-row">
+                <input id="chatInputStudio" type="text" placeholder="Send a message…">
+                <button class="btn" id="chatSendStudio">Send</button>
+              </div>
+              <div class="emoji-bar">
+                <button class="emoji-btn">👍</button><button class="emoji-btn">❤️</button><button class="emoji-btn">🔥</button><button class="emoji-btn">😂</button><button class="emoji-btn">😱</button><button class="emoji-btn">🤔</button>
+              </div>
+            </div>
+          </div>
 
-    // --- 1. Get references to HTML elements ---
-    const videoPlayer = document.getElementById('localVideoInput');
-    const hostBtn = document.getElementById('hostBtn');
-    const guestBtn = document.getElementById('guestBtn');
-    const statusDiv = document.getElementById('status');
-    const body = document.querySelector('body');
+          <div class="only-cinema stack">
+            <div class="card">
+              <div class="section-title">Selected Film</div>
+              <div class="row"> <button class="btn" id="btnChangeFilm" style="width:100%">Change Film</button> </div>
+              <div id="filmCard" class="stack" style="margin-top:8px">
+                <div class="p-img" id="filmThumb"></div>
+                <div class="row"> <span class="pill">Status: <span id="filmStatus" style="margin-left:6px">Idle</span></span> <label class="pill" style="gap:10px; align-items:center"> <input type="checkbox" id="chkReplaceHost" /> Replace Host </label> <label class="pill" id="pipRow" style="display:none; gap:10px; align-items:center"> <input type="checkbox" id="chkHostPiP" checked /> Host PiP </label> </div>
+              </div>
+            </div>
+            <div class="card">
+              <div class="section-title">Playback</div>
+              <div class="row"> <button class="btn" id="btnPlay">Play</button> <button class="btn" id="btnSeekBack">-10s</button> <button class="btn" id="btnSeekFwd">+10s</button> <span class="pill">Sync: <span id="syncState" style="margin-left:6px">Idle</span></span> </div>
+            </div>
+            <div class="card">
+              <div class="section-title">Cinema Layout</div>
+              <div id="cinemaGallery" class="layout-gallery" aria-label="Cinema Layouts"></div>
+            </div>
+            <div class="card chat-card">
+              <div class="section-title">
+                <span>Chat</span>
+                <div class="toggle-group">
+                  <label for="chatOverlayToggleCinema">Overlay</label>
+                  <label class="switch">
+                    <input type="checkbox" class="chat-overlay-toggle-input accent" id="chatOverlayToggleCinema" checked>
+                    <span class="slider"></span>
+                  </label>
+                </div>
+              </div>
+              <div class="log" id="chatLogCinema" aria-live="polite"></div>
+              <div class="input-row"> <input id="chatInputCinema" type="text" placeholder="Send a message…"> <button class="btn" id="chatSendCinema">Send</button> </div>
+               <div class="emoji-bar">
+                <button class="emoji-btn">👍</button><button class="emoji-btn">❤️</button><button class="emoji-btn">🔥</button><button class="emoji-btn">😂</button><button class="emoji-btn">😱</button><button class="emoji-btn">🤔</button>
+              </div>
+            </div>
+          </div>
 
-    // --- This function contains all our app logic ---
-    function initializeApp(role) {
-        // Clear any previous state
-        if (window.syncInterval) clearInterval(window.syncInterval);
+          <div class="only-shop-panel only-host stack">
+            <div class="card">
+              <div class="section-title">Shop Layout</div>
+              <div id="shopGallery" class="layout-gallery" aria-label="Shop Layouts"></div>
+            </div>
+            <div class="card">
+                <div class="section-title">Your Catalog</div>
+                <div id="hostCatalogList" class="stack"></div>
+                <button class="btn ghost" id="btnToggleCatalog" style="width:100%; margin-top:8px; display:none;">See More</button>
+            </div>
+            <div class="card">
+              <div class="section-title">Live Collection</div>
+              <div id="liveProductsList" class="stack"></div>
+            </div>
+            <div class="card chat-card">
+              <div class="section-title">
+                <span>Chat</span>
+                <div class="toggle-group">
+                  <label for="chatOverlayToggleShop">Overlay</label>
+                  <label class="switch">
+                    <input type="checkbox" class="chat-overlay-toggle-input accent" id="chatOverlayToggleShop" checked>
+                    <span class="slider"></span>
+                  </label>
+                </div>
+              </div>
+              <div class="log" id="chatLogShop" aria-live="polite"></div>
+              <div class="input-row">
+                <input id="chatInputShop" type="text" placeholder="Send a message…">
+                <button class="btn" id="chatSendShop">Send</button>
+              </div>
+               <div class="emoji-bar">
+                <button class="emoji-btn">👍</button><button class="emoji-btn">❤️</button><button class="emoji-btn">🔥</button><button class="emoji-btn">😂</button><button class="emoji-btn">😱</button><button class="emoji-btn">🤔</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </aside>
+    </section>
+  </main>
+
+  <footer>
+    <div class="footer-wrap-new">
+      <div class="ctl-group-new" id="micGroup">
+        <button class="ctl-btn-new tip" data-tip="Mute/Unmute Mic" aria-pressed="false" id="btnMicNew">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.49 6-3.31 6-6.72h-1.7z"></path></svg>
+        </button>
+        <div class="audio-meter" id="footerAudioMeter"><i id="bar1"></i><i id="bar2"></i><i id="bar3"></i></div>
+        <button class="ctl-caret-new" id="micCaretNew" aria-label="Audio options"><svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"></path></svg></button>
+      </div>
+      <div class="ctl-group-new">
+        <button class="ctl-btn-new tip" data-tip="Start/Stop Video" aria-pressed="false" id="btnCamNew">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"></path></svg>
+        </button>
+        <button class="ctl-caret-new" id="camCaretNew" aria-label="Video options"><svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"></path></svg></button>
+      </div>
+      <div class="ctl-group-new" id="speakerGroup">
+        <button class="ctl-btn-new tip is-muted" data-tip="Unmute" aria-pressed="false" id="btnSpeakerNew">
+          <svg class="icon-on" viewBox="0 0 24 24" fill="currentColor"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"></path></svg>
+          <svg class="icon-off" viewBox="0 0 24 24" fill="currentColor"><path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"></path></svg>
+        </button>
+        <div class="audio-meter" id="outputAudioMeter"><i id="outBar1"></i><i id="outBar2"></i><i id="outBar3"></i></div>
+        <button class="ctl-caret-new" id="speakerCaretNew" aria-label="Audio output options"><svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"></path></svg></button>
+      </div>
+      
+      <button class="ctl-btn-new tip" data-tip="Participants" id="btnParticipantsNew"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"></path></svg></button>
+      
+      <button class="ctl-btn-new tip" data-tip="Add Source" id="btnPlusNew">
+        <svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" fill="none"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+      </button>
+
+      <button class="ctl-btn-new tip" data-tip="Record" aria-pressed="false" id="btnRecordNew"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm4-4H8V8h8v8z"></path></svg></button>
+      
+      <button class="btn danger pill" id="btnEndNew" style="margin-left: 16px;">End</button>
+    </div>
+  </footer>
+  
+  <div class="context-menu" id="micMenu"> <div class="section-title">Microphone</div> <select id="micSelect" title="Microphones"></select> </div>
+  <div class="context-menu" id="camMenu"> <div class="section-title">Camera</div> <select id="camSelect" title="Cameras"></select> <video id="camPreview" playsinline muted style="width:100%; margin-top:8px; max-height:180px; border-radius:10px; border:1px solid var(--stroke); background:#0a0c12;"></video> </div>
+  <div class="context-menu" id="speakerMenu">
+    <div class="section-title">Speaker</div>
+    <select id="speakerSelect" title="Speakers"></select>
+    <div class="gain-slider-container">
+      <label for="gainSlider">Volume Boost <span id="gainValueLabel">0 dB</span></label>
+      <input type="range" id="gainSlider" min="1" max="5" value="1" step="0.1">
+    </div>
+  </div>
+  
+  <div class="context-menu" id="plusMenu">
+      <div class="plus-menu-list">
+        <button class="plus-menu-item" id="plusMenuScreenShare">
+            <svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>
+            <span>Screen Share</span>
+        </button>
+        <button class="plus-menu-item" id="plusMenuLocalVideo">
+            <svg viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect><line x1="7" y1="2" x2="7" y2="22"></line><line x1="17" y1="2" x2="17" y2="22"></line><line x1="2" y1="12" x2="22" y2="12"></line><line x1="2" y1="7" x2="7" y2="7"></line><line x1="2" y1="17" x2="7" y2="17"></line><line x1="17" y1="17" x2="22" y2="17"></line><line x1="17" y1="7" x2="22" y2="7"></line></svg>
+            <span>Local Video</span>
+        </button>
+        <button class="plus-menu-item" disabled>
+            <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+            <span>Presentations</span>
+        </button>
+      </div>
+  </div>
+
+  <div class="context-menu" id="participantsMenu"> <div class="section-title">Invite Guests</div> <button class="btn primary" id="btnCopyInvite">Copy Invite Link</button> <a id="emailInviteLink" class="btn" style="text-decoration: none;">Invite via Email</a> </div>
+  <div id="endModal" class="modal-overlay"> <div class="modal-dialog"> <h3 style="margin:0; text-align:center;">End Meeting</h3> <button id="btnEndForAll" class="btn danger">End Meeting for All</button> <button id="btnLeave" class="btn">Leave Meeting</button> <button id="btnEndCancel" class="btn ghost">Cancel</button> </div> </div>
+  
+  <div class="modal-overlay" id="filmPicker">
+    <div class="modal-dialog" style="width:min(860px, 92vw); gap: 20px;">
+      <h3 style="margin:0">Select a Film</h3>
+      <div id="filmGrid" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap:12px; max-height:60vh; overflow-y:auto; padding-right: 8px; padding-top: 8px;">
+      </div>
+      <div style="display:flex; justify-content:flex-end;">
+        <button class="btn" id="filmClose">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"></div>
+  
+  <input type="file" id="localVideoInput" accept="video/*" style="display: none;" />
+
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
+  <script>
+    // --- THIS WRAPPER IS THE CORE FIX ---
+    document.addEventListener('DOMContentLoaded', () => {
+
+        const state = {
+          mode:'studio', role:'host', filmLoaded:false, playing:false, layout:'host', film:null, replaceHost:false, hostPiP:true,
+          roomId: new URL(location.href).searchParams.get("room") || null,
+          liveCollection: {}, isTesting: true, chatOverlayVisible: true,
+        };
+
+        function setMode(m){
+          state.mode = m;
+          document.body.setAttribute('data-mode', m);
+          [btnModeStudio,btnModeCinema,btnModeShop].forEach(b=> b.setAttribute('aria-pressed','false'));
+          if(m==='studio') btnModeStudio.setAttribute('aria-pressed','true');
+          if(m==='cinema') btnModeCinema.setAttribute('aria-pressed','true');
+          if(m==='shop')   btnModeShop.setAttribute('aria-pressed','true');
+          if (m !== 'shop') { try { document.getElementById('productSpotlight')?.classList.remove('open'); } catch(e){} }
+          renderLayout();
+        }
         
-        body.dataset.role = role; // Set the role on the body
-        hostBtn.classList.toggle('active', role === 'host');
-        guestBtn.classList.toggle('active', role === 'guest');
-        statusDiv.textContent = `You are now the ${role}. Connection is being established.`;
-        console.log(`Initializing as ${role}`);
+        function setRole(r){ state.role=r; roleTxt.textContent=r[0].toUpperCase()+r.slice(1); document.body.setAttribute('data-role', r); }
+        const btnModeStudio=document.getElementById('btnModeStudio'), btnModeCinema=document.getElementById('btnModeCinema'), btnModeShop=document.getElementById('btnModeShop'), roleTxt=document.getElementById('roleTxt');
+        btnModeStudio.onclick=()=> setMode('studio'); btnModeCinema.onclick=()=> setMode('cinema'); btnModeShop.onclick=()=> setMode('shop');
 
-        // --- 2. WebSocket Connection ---
-        // THIS IS THE CORRECTED LINE:
-        const socket = new WebSocket('wss://imboxo-live-server.onrender.com');
+        const bus = new EventTarget();
+        function send(m){ bus.dispatchEvent(new CustomEvent('m',{detail:m})); }
+        function onMsg(fn){ bus.addEventListener('m', e=> fn(e.detail)); }
 
-        socket.onopen = () => {
-            console.log('Successfully connected to the signaling server.');
-            statusDiv.textContent = `You are the ${role}. Connection successful.`;
-        };
+        function wireChat(inputId, logId){
+          const input = document.getElementById(inputId);
+          const log = document.getElementById(logId);
+          const btn = input.parentElement.querySelector('button');
+          const sendMessage = () => {
+            const v = input.value.trim();
+            if(!v) return;
+            input.value='';
+            const m = {type:'chat', user:state.role, ts:Date.now(), text:v};
+            addChat(log, m);
+            send(m);
+          };
+          btn.onclick = sendMessage;
+          input.onkeydown = (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              sendMessage();
+            }
+          };
+          
+          const chatCard = input.closest('.chat-card');
+          if (chatCard) {
+            const emojiBar = chatCard.querySelector('.emoji-bar');
+            if (emojiBar) {
+              emojiBar.querySelectorAll('.emoji-btn').forEach(btn => {
+                btn.onclick = () => { input.value += btn.textContent; input.focus(); };
+              });
+            }
+          }
+        }
 
-        socket.onerror = (error) => {
-            console.error('WebSocket Error:', error);
-            statusDiv.textContent = `WebSocket connection failed. Please check the console.`;
-        };
+        function addChat(log, m){ const row=document.createElement('div'); row.innerHTML = `<span style="opacity:.7">${new Date(m.ts).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span> <strong>${m.user}:</strong> ${escapeHtml(m.text)}`; log.appendChild(row); log.scrollTop=log.scrollHeight; }
+        wireChat('chatInputStudio','chatLogStudio');
+        wireChat('chatInputCinema','chatLogCinema');
+        wireChat('chatInputShop','chatLogShop');
 
-        socket.onclose = () => {
-            console.warn('WebSocket connection closed.');
-            statusDiv.textContent = `Connection closed. Please refresh and select a role again.`;
-        };
+        const stageStudio = document.getElementById('stageStudio'); const stageCinema = document.getElementById('stageCinema');
+        function makeTile(spanClass, label){ const t=document.createElement('div'); t.className=`tile ${spanClass}`; if(label){ const l=document.createElement('div'); l.className='label'; l.textContent=label; t.appendChild(l); } return t; }
+        function clearStage(el){ while(el.firstChild) el.removeChild(el.firstChild); }
+        const hostVideoEl = document.createElement('video'); hostVideoEl.className = 'host-video-el'; hostVideoEl.setAttribute('playsinline', ''); hostVideoEl.setAttribute('autoplay', ''); hostVideoEl.setAttribute('muted', ''); hostVideoEl.style.transform = 'scaleX(-1)';
+        const remoteVideoEl = document.createElement('video'); remoteVideoEl.id = 'remote-video'; remoteVideoEl.setAttribute('playsinline', ''); remoteVideoEl.setAttribute('autoplay', '');
+        
+        function renderStudio(){
+          clearStage(stageStudio);
+          const guestIsVisible = pc?.connectionState === 'connected';
+          const hostTile = makeTile('', 'Host'); hostTile.appendChild(hostVideoEl);
+          const remoteTile = makeTile('', 'Guest'); remoteTile.appendChild(remoteVideoEl);
+          if (state.layout === 'host') { hostTile.className = 'tile span-12'; stageStudio.appendChild(hostTile); }
+          else if (state.layout === 'split') { hostTile.className = 'tile span-6'; stageStudio.appendChild(hostTile); if (guestIsVisible) { remoteTile.className = 'tile span-6'; stageStudio.appendChild(remoteVideoEl); } else { stageStudio.appendChild(makeTile('span-6', '')); } }
+          else if (state.layout === '2x2') { hostTile.className = 'tile span-6'; stageStudio.appendChild(hostTile); if (guestIsVisible) { remoteTile.className = 'tile span-6'; stageStudio.appendChild(remoteVideoEl); } else { stageStudio.appendChild(makeTile('span-6', '')); } stageStudio.appendChild(makeTile('span-6', '')); stageStudio.appendChild(makeTile('span-6', '')); }
+          else if (state.layout === '3x3') { hostTile.className = 'tile span-4'; stageStudio.appendChild(hostTile); if (guestIsVisible) { remoteTile.className = 'tile span-4'; stageStudio.appendChild(remoteVideoEl); } else { stageStudio.appendChild(makeTile('span-4', '')); } for(let i=0; i<7; i++) stageStudio.appendChild(makeTile('span-4', '')); }
+        }
+        
+        const videoEl = document.createElement('video'); videoEl.id='partyVideo'; videoEl.setAttribute('playsinline',''); videoEl.setAttribute('webkit-playsinline',''); videoEl.crossOrigin = "anonymous"; videoEl.controls=false;
+        const pipVideoEl = document.createElement('video'); pipVideoEl.setAttribute('playsinline', ''); pipVideoEl.setAttribute('autoplay', ''); pipVideoEl.setAttribute('muted', ''); pipVideoEl.style.cssText = 'width:100%; height:100%; object-fit:cover; border-radius: 4px; transform: scaleX(-1);';
+        const hostPiP = document.createElement('div'); hostPiP.className = 'pip'; hostPiP.appendChild(pipVideoEl);
+        
+        function renderCinema() {
+            clearStage(stageCinema);
+            const guestIsVisible = pc?.connectionState === 'connected';
+            if (mediaState.camOn && mediaState.camStream) {
+                hostVideoEl.srcObject = mediaState.camStream;
+                pipVideoEl.srcObject = mediaState.camStream;
+                hostVideoEl.play().catch(e => console.warn("Cinema host play failed", e));
+                pipVideoEl.play().catch(e => console.warn("Cinema PiP play failed", e));
+            }
+            const hostTile = makeTile('', 'Host');
+            if (!state.replaceHost) { hostTile.appendChild(hostVideoEl); }
+            const remoteTile = makeTile('', 'Guest'); remoteTile.appendChild(remoteVideoEl);
+            const filmTile = makeTile('', 'Film'); filmTile.appendChild(videoEl);
+            if (state.replaceHost) {
+                if (state.hostPiP && hostPiP.parentElement !== filmTile) { filmTile.appendChild(hostPiP); }
+                if (state.layout === 'host') { filmTile.className = 'tile span-12'; stageCinema.appendChild(filmTile); }
+                else if (state.layout === 'split') { filmTile.className = 'tile span-6'; stageCinema.appendChild(filmTile); if (guestIsVisible) { remoteTile.className = 'tile span-6'; stageCinema.appendChild(remoteVideoEl); } else { stageCinema.appendChild(makeTile('span-6', '')); } }
+                else if (state.layout === '2x2') { filmTile.className = 'tile span-6'; stageCinema.appendChild(filmTile); if (guestIsVisible) { remoteTile.className = 'tile span-6'; stageCinema.appendChild(remoteVideoEl); } else { stageCinema.appendChild(makeTile('span-6', '')); } stageCinema.appendChild(makeTile('span-6', '')); stageCinema.appendChild(makeTile('span-6', '')); }
+                else if (state.layout === '3x3') { filmTile.className = 'tile span-4'; stageCinema.appendChild(filmTile); if (guestIsVisible) { remoteTile.className = 'tile span-4'; stageCinema.appendChild(remoteVideoEl); } else { stageCinema.appendChild(makeTile('span-4', '')); } for (let i = 0; i < 7; i++) stageCinema.appendChild(makeTile('span-4', '')); }
+            } else {
+                if (hostPiP.parentElement === filmTile) { filmTile.removeChild(hostPiP); }
+                if (state.layout === 'host') { hostTile.className = 'tile span-12'; stageCinema.appendChild(hostTile); }
+                else if (state.layout === 'split') { hostTile.className = 'tile span-6'; stageCinema.appendChild(hostTile); filmTile.className = 'tile span-6'; stageCinema.appendChild(filmTile); }
+                else if (state.layout === '2x2') { hostTile.className = 'tile span-6'; stageCinema.appendChild(hostTile); filmTile.className = 'tile span-6'; stageCinema.appendChild(filmTile); if (guestIsVisible) { remoteTile.className = 'tile span-6'; stageCinema.appendChild(remoteVideoEl); } else { stageCinema.appendChild(makeTile('span-6', '')); } stageCinema.appendChild(makeTile('span-6', '')); }
+                else if (state.layout === '3x3') { hostTile.className = 'tile span-4'; stageCinema.appendChild(hostTile); filmTile.className = 'tile span-4'; stageCinema.appendChild(filmTile); if (guestIsVisible) { remoteTile.className = 'tile span-4'; stageCinema.appendChild(remoteVideoEl); } else { stageCinema.appendChild(makeTile('span-4', '')); } for (let i = 0; i < 6; i++) stageCinema.appendChild(makeTile('span-4', '')); }
+            }
+        }
+        
+        function renderLayout(){ if(state.mode === 'studio' || state.mode === 'shop') renderStudio(); if(state.mode === 'cinema') renderCinema(); }
 
+        function layoutThumb(type, cinema=false) {
+            const wrap = document.createElement('div');
+            wrap.className = 'layout-thumb';
+            const addBlk = (cls) => {
+                const blk = document.createElement('div');
+                blk.className = 'blk ' + (cls || '');
+                wrap.appendChild(blk);
+                return blk;
+            };
+            if (type === 'host') {
+                wrap.style.gridTemplateColumns = '1fr';
+                addBlk(cinema ? 'film' : 'host');
+            } else if (type === 'split') {
+                wrap.style.gridTemplateColumns = '1fr 1fr';
+                addBlk(cinema ? 'film' : 'host');
+                addBlk('');
+            } else if (type === '2x2') {
+                wrap.style.gridTemplateColumns = '1fr 1fr';
+                wrap.style.gridTemplateRows = '1fr 1fr';
+                addBlk(cinema ? 'film' : 'host');
+                addBlk(''); addBlk(''); addBlk('');
+            } else if (type === '3x3') {
+                wrap.style.gridTemplateColumns = '1fr 1fr 1fr';
+                wrap.style.gridTemplateRows = '1fr 1fr 1fr';
+                addBlk(cinema ? 'film' : 'host');
+                for (let i = 0; i < 8; i++) addBlk('');
+            }
+            return wrap;
+        }
+        
+        function mountLayoutGallery(containerId, forCinema=false){ const container=document.getElementById(containerId); if(!container) return; container.innerHTML=''; ['host','split','2x2','3x3'].forEach(k=>{ const card=document.createElement('button'); card.className='layout-card'; card.setAttribute('aria-pressed', state.layout===k?'true':'false'); card.title=k; card.appendChild(layoutThumb(k,forCinema)); card.onclick=()=>{ state.layout=k; [...document.querySelectorAll('#' + containerId + ' .layout-card')].forEach(x=>x.setAttribute('aria-pressed','false')); card.setAttribute('aria-pressed','true'); renderLayout(); }; container.appendChild(card); }); }
 
-        // --- 3. GUEST Logic: Listen for commands from the host ---
-        if (role === 'guest') {
-            videoPlayer.controls = false; // Guests cannot control the video directly
-            socket.onmessage = (event) => {
-                try {
-                    const data = JSON.parse(event.data);
-                    console.log('Guest received command:', data); // For debugging
-
-                    switch (data.command) {
-                        case 'play':
-                            videoPlayer.currentTime = data.time;
-                            videoPlayer.play();
-                            break;
-                        case 'pause':
-                            videoPlayer.pause();
-                            break;
-                        case 'seek':
-                            videoPlayer.currentTime = data.time;
-                            break;
-                        case 'sync':
-                            // Only correct the time if we've drifted by more than 1.5 seconds
-                            if (Math.abs(videoPlayer.currentTime - data.time) > 1.5) {
-                                console.log(`Resyncing time from ${videoPlayer.currentTime} to ${data.time}`);
-                                videoPlayer.currentTime = data.time;
-                            }
-                            break;
-                    }
-                } catch (error) {
-                    console.error("Failed to process message:", error);
+        const filmThumb=document.getElementById('filmThumb'), filmStatus=document.getElementById('filmStatus'), syncStateEl=document.getElementById('syncState'), chkReplaceHost=document.getElementById('chkReplaceHost'), chkHostPiP=document.getElementById('chkHostPiP'), pipRow=document.getElementById('pipRow'), btnPlay = document.getElementById('btnPlay'), btnChangeFilm = document.getElementById('btnChangeFilm');
+        const films = [
+          {id:'f1', title:'Big Buck Bunny', url:'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4', thumb:'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c5/Big_buck_bunny_poster_big.jpg/800px-Big_buck_bunny_poster_big.jpg'},
+          {id:'f2', title:'Sintel', url:'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4', thumb:'https://static.wixstatic.com/media/d8a03e_98dfdf4401a4478bb16361dd68f56c11~mv2.png'},
+          {id:'f3', title:'Elephants Dream', url:'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4', thumb:'https://static.wixstatic.com/media/d8a03e_051f5d8b7bb5439f9a662f6f3f9fe565~mv2.png'},
+          {id:'f4', title:'Tears of Steel', url:'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4', thumb:'https://static.wixstatic.com/media/d8a03e_474d7acb8bc74e77a111d561045fb2da~mv2.png'}
+        ];
+        
+        const filmPicker=document.getElementById('filmPicker'), filmGrid=document.getElementById('filmGrid'), filmCloseBtn=document.getElementById('filmClose');
+        
+        function buildFilmPicker() {
+          filmGrid.innerHTML = '';
+          films.forEach(f => {
+            const card = document.createElement('div'); card.className = 'film-select-card';
+            card.innerHTML = `<img src="${f.thumb}" alt="${escapeHtml(f.title)}"><div class="title">${escapeHtml(f.title)}</div>`;
+            card.onclick = () => { loadFilm(f); filmPicker.classList.remove('open'); };
+            filmGrid.appendChild(card);
+          });
+        }
+        btnChangeFilm.onclick = () => { buildFilmPicker(); filmPicker.classList.add('open'); };
+        filmCloseBtn.onclick = () => filmPicker.classList.remove('open');
+        
+        function loadFilm(f){
+            try{
+                state.film=f;
+                videoEl.src=f.url;
+                videoEl.load();
+                filmStatus.textContent='Ready';
+                filmThumb.style.backgroundImage=`url('${f.thumb}')`;
+                filmThumb.classList.add('is-ready');
+                state.filmLoaded=true;
+                
+                state.playing = false;
+                mediaState.outputAudioSetup = false;
+                stopOutputMeter();
+                if (btnPlay) {
+                    btnPlay.textContent = 'Play';
+                    btnPlay.classList.remove('is-playing');
+                    btnPlay.classList.add('prompt-glow');
                 }
+                
+                if(syncStateEl) syncStateEl.textContent='Ready';
+                renderLayout();
+            } catch(e){
+                console.warn(e);
+                filmThumb.classList.remove('is-ready');
+            }
+        }
+        let driftAvg=0; function gentlySeekTo(target){ const d=target-videoEl.currentTime; driftAvg=0.8*driftAvg+0.2*d; if(syncStateEl) syncStateEl.textContent=Math.abs(driftAvg)<.15?'OK':'Adjusting'; if(Math.abs(d)>.8){ videoEl.currentTime=target; return;} videoEl.playbackRate = 1+Math.max(-0.03, Math.min(0.03, d*0.25)); }
+        function hostPlayPause(){
+            if(!state.filmLoaded) return;
+            
+            btnPlay.classList.remove('prompt-glow');
+
+            state.playing=!state.playing;
+            btnPlay.textContent = state.playing ? 'Pause' : 'Play';
+            btnPlay.classList.toggle('is-playing', state.playing);
+            if(state.playing){
+                videoEl.play();
+                setupOutputAudioProcessing();
+                if(mediaState.speakerOn) startOutputMeter();
+                speakerGroup.classList.toggle('is-active', mediaState.speakerOn);
+                send({type:'play',pos:videoEl.currentTime,t:performance.now()});
+            } else {
+                videoEl.pause();
+                stopOutputMeter();
+                speakerGroup.classList.remove('is-active');
+                send({type:'pause',pos:videoEl.currentTime,t:performance.now()});
+            }
+        }
+        function hostSeek(delta){ if(!state.filmLoaded) return; videoEl.currentTime=Math.max(0, videoEl.currentTime+delta); send({type:'seek',pos:videoEl.currentTime,t:performance.now()}); }
+        onMsg(m=>{ if (m.type === 'chat') { showOverlayMessage(m); } if(state.role==='host') return; if(m.type==='play'){ gentlySeekTo(m.pos + (performance.now()-m.t)/1000); videoEl.play(); setupOutputAudioProcessing(); } if(m.type==='pause'){ gentlySeekTo(m.pos); videoEl.pause(); } if(m.type==='seek'){ gentlySeekTo(m.pos); } if(m.type==='tick' && !videoEl.paused){ gentlySeekTo(m.pos + (performance.now()-m.t)/1000); } });
+        setInterval(()=>{ if(state.role==='host' && state.playing) send({type:'tick',pos:videoEl.currentTime,t:performance.now()}); }, 1500);
+        btnPlay.onclick=hostPlayPause; document.getElementById('btnSeekBack').onclick=()=> hostSeek(-10); document.getElementById('btnSeekFwd').onclick=()=> hostSeek(+10);
+        chkReplaceHost.onchange=()=>{ state.replaceHost=chkReplaceHost.checked; pipRow.style.display = state.replaceHost ? 'inline-flex' : 'none'; renderLayout(); }; chkHostPiP.onchange=()=>{ state.hostPiP=chkHostPiP.checked; renderLayout(); };
+
+        function escapeHtml(s){ return s.replace(/[&<>"']/g, c=> ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[c])); }
+        function makeCardsCollapsible() { document.querySelectorAll('.panel .card:not(.chat-card) .section-title').forEach(title => { title.addEventListener('click', () => { title.closest('.card').classList.toggle('collapsed'); }); }); }
+        function showToast(message) { const toastEl = document.getElementById('toast'); toastEl.textContent = message; toastEl.classList.add('show'); setTimeout(() => { toastEl.classList.remove('show'); }, 3000); }
+
+        const hostCatalogList = document.getElementById('hostCatalogList'), liveProductsList = document.getElementById('liveProductsList'), productSpotlight = document.getElementById('productSpotlight'), btnToggleCatalog = document.getElementById('btnToggleCatalog'); const fmtUSD = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
+        const productCatalog = [ { id: 'hoodie', title: 'IMBOXO Adidas Fleece Hoodie', price: 55.00, url: 'https://imboxo.shop/products/imboxo-adidas-fleece-hoodie', image: 'https://imboxo.shop/cdn/shop/files/adidas-fleece-hoodie-black-front-and-back-673a31b87f6ea.jpg?v=1731867072&width=300' }, { id: 'backpack', title: 'IMBOXO Backpack', price: 43.00, url: 'https://imboxo.shop/products/imboxo-backpack', image: 'https://imboxo.shop/cdn/shop/files/all-over-print-backpack-white-front-673a37f1241f3.jpg?v=1731868664&width=300' }, { id: 'cap', title: 'IMBOXO Cap', price: 23.00, url: 'https://imboxo.shop/products/imboxo-cap', image: 'https://imboxo.shop/cdn/shop/files/retro-trucker-hat-black-left-673a3d73b8121.jpg?v=1731870077&width=300' }, { id: 'beanie', title: 'IMBOXO Beanie', price: 24.00, url: 'https://imboxo.shop/products/imboxo-beanie', image: 'https://imboxo.shop/cdn/shop/files/fisherman-beanie-black-front-673a3450c23fa.jpg?v=1731867734&width=300' } ];
+        function renderHostCatalog() { if (!hostCatalogList) return; hostCatalogList.innerHTML = ''; if (productCatalog.length > 2) btnToggleCatalog.style.display = 'block'; productCatalog.forEach(p => { const isAdded = state.liveCollection[p.id]; const card = document.createElement('div'); card.className = 'card'; card.innerHTML = `<div class="row" style="gap: 10px;"><img src="${p.image}" style="width: 48px; height: 48px; border-radius: 6px; object-fit: cover;"><div class="stack" style="gap: 0; flex: 1; min-width: 0;"><div class="p-title" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(p.title)}</div><div class="p-price">${fmtUSD.format(p.price)}</div></div><button class="btn btn-add-to-live" data-product-id="${p.id}" ${isAdded ? 'disabled' : ''}>${isAdded ? '✓ Added' : 'Add to Live'}</button></div>`; hostCatalogList.appendChild(card); }); }
+        hostCatalogList.addEventListener('click', (e) => { if (e.target.classList.contains('btn-add-to-live')) { const productId = e.target.dataset.productId; const productData = productCatalog.find(p => p.id === productId); if (productData) { state.liveCollection[productId] = productData; renderLiveCollection(); renderHostCatalog(); showToast(`${productData.title} added!`); } } });
+        btnToggleCatalog.onclick = () => { hostCatalogList.classList.toggle('expanded'); btnToggleCatalog.textContent = hostCatalogList.classList.contains('expanded') ? 'See Less' : 'See More'; };
+
+        function renderLiveCollection(highlightedId) { if (!liveProductsList) return; liveProductsList.innerHTML = ''; if (Object.keys(state.liveCollection).length === 0) { liveProductsList.textContent = 'Add products from your catalog to feature them during the live session.'; return; } Object.values(state.liveCollection).forEach(p => { const isLive = p.id === highlightedId; const card = document.createElement('div'); card.className = 'card'; card.innerHTML = `<div class="row" style="gap: 10px;"><img src="${p.image}" style="width: 48px; height: 48px; border-radius: 6px; object-fit: cover;"><div class="stack" style="gap: 0; flex: 1; min-width: 0;"><div class="p-title" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(p.title)}</div><div class="p-price">${fmtUSD.format(p.price)}</div></div><button class="btn primary btn-highlight ${isLive ? 'is-live' : ''}" data-product-id="${p.id}">${isLive ? '✓ LIVE' : 'Highlight'}</button></div>`; liveProductsList.appendChild(card); }); }
+        liveProductsList.addEventListener('click', (e) => { if (e.target.classList.contains('btn-highlight')) { const productId = e.target.dataset.productId; if (btnGoLive.textContent.includes('Testing') || state.roomId) { const currentlyLive = e.target.classList.contains('is-live'); renderLiveCollection(currentlyLive ? null : productId); renderProductSpotlight(currentlyLive ? null : state.liveCollection[productId]); } else { showToast("You must 'Go Live' or be in 'Test Mode' to highlight products."); } } });
+        function renderProductSpotlight(product) { if (!product) { productSpotlight.classList.remove('open'); return; } productSpotlight.innerHTML = `<img src="${product.image}" alt="${escapeHtml(product.title)}"><div class="info"><div class="p-title">${escapeHtml(product.title)}</div><div class="row"><span class="p-price">${fmtUSD.format(product.price)}</span><a href="${product.url}" target="_blank" rel="noopener" class="btn primary">Checkout</a></div></div>`; if(state.mode!=='shop'){ showToast("Shop features are only available in the Shop view."); return; } productSpotlight.classList.add('open'); }
+        
+        const canvasChatOverlay = document.getElementById('canvasChatOverlay');
+        function showOverlayMessage(msg) { if (!state.chatOverlayVisible) return; if (canvasChatOverlay.children.length >= 6) { canvasChatOverlay.firstChild.remove(); } const msgEl = document.createElement('div'); msgEl.className = 'canvas-chat-msg'; msgEl.innerHTML = `<strong>${escapeHtml(msg.user)}:</strong> ${escapeHtml(msg.text)}`; canvasChatOverlay.appendChild(msgEl); setTimeout(() => msgEl.classList.add('visible'), 50); }
+        
+        function handleChatOverlayToggle(event) {
+            const isVisible = event.target.checked;
+            state.chatOverlayVisible = isVisible;
+            canvasChatOverlay.classList.toggle('hidden', !isVisible);
+            document.querySelectorAll('.chat-overlay-toggle-input').forEach(toggle => {
+                toggle.checked = isVisible;
+            });
+        }
+
+        const btnMicNew = document.getElementById('btnMicNew'),
+              micGroup = document.getElementById('micGroup'),
+              btnCamNew = document.getElementById('btnCamNew'),
+              btnSpeakerNew = document.getElementById('btnSpeakerNew'),
+              speakerGroup = document.getElementById('speakerGroup'),
+              micCaretNew = document.getElementById('micCaretNew'),
+              camCaretNew = document.getElementById('camCaretNew'),
+              speakerCaretNew = document.getElementById('speakerCaretNew'),
+              btnPlusNew = document.getElementById('btnPlusNew'),
+              micMenu = document.getElementById('micMenu'),
+              camMenu = document.getElementById('camMenu'),
+              speakerMenu = document.getElementById('speakerMenu'),
+              plusMenu = document.getElementById('plusMenu'),
+              micSel = document.getElementById('micSelect'),
+              camSel = document.getElementById('camSelect'),
+              speakerSel = document.getElementById('speakerSelect'),
+              gainSlider = document.getElementById('gainSlider'),
+              gainValueLabel = document.getElementById('gainValueLabel'),
+              camPreview = document.getElementById('camPreview'),
+              footerAudioMeter = document.getElementById('footerAudioMeter'),
+              outputAudioMeter = document.getElementById('outputAudioMeter'),
+              localVideoInput = document.getElementById('localVideoInput');
+              
+        const mediaState = { micOn: false, camOn: false, shareOn: false, speakerOn: true, micStream: null, camStream: null, shareStream: null, micAudioCtx: null, micAnalyser: null, micLevelRAF: null, outputAudioSetup: false, outputAudioCtx: null, outputSource: null, outputGainNode: null, outputAnalyser: null, outputClipper: null, outputLevelRAF: null, recorder: null, recording: false, }; let activeMenu = null;
+        
+        function openContextMenu(menu, button) {
+          if (activeMenu === menu) { menu.style.display = 'none'; activeMenu = null; return; }
+          if (activeMenu) activeMenu.style.display = 'none';
+          const rect = button.getBoundingClientRect();
+          const menuRect = menu.getBoundingClientRect();
+          menu.style.left = `${rect.left + (rect.width / 2) - (menuRect.width / 2)}px`;
+          menu.style.display = 'flex';
+          activeMenu = menu;
+        }
+        document.addEventListener('click', (e) => { if (activeMenu && !activeMenu.contains(e.target) && !e.target.closest('.ctl-group-new') && !e.target.closest('#btnPlusNew')) { activeMenu.style.display = 'none'; activeMenu = null; } });
+        
+        micCaretNew.onclick = (e) => { e.stopPropagation(); openContextMenu(micMenu, e.currentTarget.closest('.ctl-group-new')); };
+        camCaretNew.onclick = (e) => { e.stopPropagation(); openContextMenu(camMenu, e.currentTarget.closest('.ctl-group-new')); };
+        speakerCaretNew.onclick = (e) => { e.stopPropagation(); openContextMenu(speakerMenu, e.currentTarget.closest('.ctl-group-new')); };
+        btnPlusNew.onclick = (e) => { e.stopPropagation(); openContextMenu(plusMenu, e.currentTarget); };
+        
+        async function getDevices() { try { if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return; const devices = await navigator.mediaDevices.enumerateDevices(); populateDeviceLists(devices); } catch (e) { console.warn('getDevices failed', e); } }
+        function populateDeviceLists(devices) {
+          const fill = (select, list, kind) => {
+            if (!select) return;
+            const currentId = select.value;
+            select.innerHTML = '';
+            list.filter(d => d.kind === kind).forEach((d, i) => {
+              const opt = document.createElement('option');
+              opt.value = d.deviceId;
+              opt.textContent = d.label || `${kind.replace('input', '').replace('output','')} ${i + 1}`;
+              select.appendChild(opt);
+            });
+            if ([...select.options].some(o => o.value === currentId)) { select.value = currentId; }
+          };
+          fill(micSel, devices, 'audioinput');
+          fill(camSel, devices, 'videoinput');
+          fill(speakerSel, devices, 'audiooutput');
+        }
+        function stopStream(stream) { if (!stream) return; stream.getTracks().forEach(t => t.stop()); }
+        async function requestMic(deviceId) { stopStream(mediaState.micStream); stopMicMeter(); const stream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: deviceId ? { exact: deviceId } : undefined, echoCancellation: true, noiseSuppression: true }, video: false }); mediaState.micStream = stream; setMicState(true); if (pc) { const sender = pc.getSenders().find(s => s.track?.kind === 'audio'); if (sender) sender.replaceTrack(stream.getAudioTracks()[0]); } return stream; }
+        async function requestCam(deviceId) { stopStream(mediaState.camStream); const stream = await navigator.mediaDevices.getUserMedia({ video: { deviceId: deviceId ? { exact: deviceId } : undefined, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false }); mediaState.camStream = stream; setCamState(true); if (pc) { const sender = pc.getSenders().find(s => s.track?.kind === 'video'); if (sender) sender.replaceTrack(stream.getVideoTracks()[0]); } return stream; }
+        
+        function setCamState(on) {
+            mediaState.camOn = on;
+            if(btnCamNew) btnCamNew.setAttribute('aria-pressed', on);
+            const stream = on ? mediaState.camStream : null;
+            if (mediaState.camStream) {
+                mediaState.camStream.getVideoTracks().forEach(t => t.enabled = on);
+            }
+            camPreview.srcObject = stream;
+            hostVideoEl.srcObject = stream;
+            pipVideoEl.srcObject = stream;
+            if(stream) {
+                camPreview.play().catch(e => console.warn("Preview play failed", e));
+                hostVideoEl.play().catch(e => console.warn("Host play failed", e));
+                pipVideoEl.play().catch(e => console.warn("PiP play failed", e));
+            }
+            renderLayout();
+        }
+
+        function setMicState(on) {
+          mediaState.micOn = on;
+          if(btnMicNew) btnMicNew.setAttribute('aria-pressed', on);
+          if(micGroup) micGroup.classList.toggle('is-active', on);
+          if (mediaState.micStream) {
+            mediaState.micStream.getAudioTracks().forEach(t => t.enabled = on);
+            on ? startMicMeter(mediaState.micStream) : stopMicMeter();
+          } else {
+            stopMicMeter();
+          }
+        }
+
+        function setShareState(on) { mediaState.shareOn = on; btnPlusNew.setAttribute('aria-pressed', on); }
+        function stopShare() { stopStream(mediaState.shareStream); mediaState.shareStream = null; setShareState(false); }
+        
+        function startMicMeter(stream){ if (!stream || !stream.getAudioTracks().length) return; const ctx = mediaState.micAudioCtx || new (window.AudioContext || window.webkitAudioContext)(); if(ctx.state === 'suspended') ctx.resume(); mediaState.micAudioCtx = ctx; const src = ctx.createMediaStreamSource(stream); const analyser = ctx.createAnalyser(); analyser.fftSize = 256; src.connect(analyser); mediaState.micAnalyser = analyser; const data = new Uint8Array(analyser.frequencyBinCount); const bars = footerAudioMeter.children; function tick(){ analyser.getByteFrequencyData(data); let sum = data.reduce((a,b) => a+b, 0); const avg = sum / data.length; const pct = Math.min(100, (avg/128) * 150); bars[0].style.height = `${Math.min(100, pct * 0.8)}%`; bars[1].style.height = `${Math.min(100, pct * 1.2)}%`; bars[2].style.height = `${Math.min(100, pct * 0.7)}%`; mediaState.micLevelRAF = requestAnimationFrame(tick); } cancelAnimationFrame(mediaState.micLevelRAF); tick(); }
+        function stopMicMeter(){ cancelAnimationFrame(mediaState.micLevelRAF); mediaState.micLevelRAF = null; if(mediaState.micAnalyser) { try { mediaState.micAnalyser.disconnect(); } catch(e){} } if(footerAudioMeter) [...footerAudioMeter.children].forEach(bar => bar.style.height = '10%'); }
+        
+        btnMicNew.onclick = () => setMicState(!mediaState.micOn);
+        btnCamNew.onclick = () => setCamState(!mediaState.camOn);
+        
+        micSel.onchange = () => requestMic(micSel.value).catch(e => console.warn(e));
+        camSel.onchange = () => requestCam(camSel.value).catch(e => console.warn(e));
+        
+        document.getElementById('plusMenuScreenShare').onclick = () => { showToast('Screen Share clicked!'); activeMenu.style.display = 'none'; };
+        document.getElementById('plusMenuLocalVideo').onclick = () => {
+            localVideoInput.click();
+            activeMenu.style.display = 'none';
+        };
+
+        function generateThumbnail(videoFile) {
+            return new Promise((resolve) => {
+                const video = document.createElement('video');
+                const canvas = document.createElement('canvas');
+                const url = URL.createObjectURL(videoFile);
+                
+                video.onloadedmetadata = () => {
+                    video.currentTime = Math.min(10, video.duration / 2);
+                };
+
+                video.onseeked = () => {
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                    canvas.getContext('2d').drawImage(video, 0, 0, video.videoWidth, video.videoHeight);
+                    const thumbUrl = canvas.toDataURL('image/jpeg');
+                    URL.revokeObjectURL(url);
+                    resolve(thumbUrl);
+                };
+                
+                video.src = url;
+                video.load();
+            });
+        }
+
+        localVideoInput.onchange = async (event) => {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            showToast('Generating thumbnail...');
+            const fileURL = URL.createObjectURL(file);
+            const thumbnailUrl = await generateThumbnail(file);
+
+            const filmObject = {
+                id: 'local',
+                title: file.name,
+                url: fileURL,
+                thumb: thumbnailUrl
+            };
+            
+            loadFilm(filmObject);
+            setMode('cinema');
+            
+            mediaState.speakerOn = true;
+            btnSpeakerNew.setAttribute('aria-pressed', true);
+            btnSpeakerNew.classList.remove('is-muted');
+            btnSpeakerNew.dataset.tip = 'Mute';
+            if(mediaState.outputGainNode) mediaState.outputGainNode.gain.value = gainSlider.value;
+
+            showToast(`Loaded: ${file.name}`);
+            
+            event.target.value = '';
+        };
+
+        // --- Web Audio API Logic ---
+        function makeSoftClipCurve(amount = 0.8) {
+            const n_samples = 44100;
+            const curve = new Float32Array(n_samples);
+            const deg = Math.PI / 180;
+            for (let i = 0; i < n_samples; ++i) {
+                const x = i * 2 / n_samples - 1;
+                curve[i] = (3 + amount) * x * 20 * deg / (Math.PI + amount * Math.abs(x));
+            }
+            return curve;
+        }
+
+        function setupOutputAudioProcessing() {
+            if (mediaState.outputAudioSetup) {
+                if (mediaState.outputAudioCtx.state === 'suspended') {
+                    mediaState.outputAudioCtx.resume();
+                }
+                return;
+            };
+            
+            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            const source = ctx.createMediaElementSource(videoEl);
+            const gainNode = ctx.createGain();
+            const clipper = new WaveShaperNode(ctx, { curve: makeSoftClipCurve() });
+            const analyser = ctx.createAnalyser();
+            
+            source.connect(gainNode).connect(clipper).connect(analyser).connect(ctx.destination);
+            
+            videoEl.muted = false;
+            gainNode.gain.value = mediaState.speakerOn ? gainSlider.value : 0;
+
+            mediaState.outputAudioCtx = ctx;
+            mediaState.outputSource = source;
+            mediaState.outputGainNode = gainNode;
+            mediaState.outputClipper = clipper;
+            mediaState.outputAnalyser = analyser;
+            mediaState.outputAudioSetup = true;
+
+            gainSlider.oninput = () => {
+                if (mediaState.speakerOn) {
+                    gainNode.gain.value = gainSlider.value;
+                }
+                const db = 20 * Math.log10(gainSlider.value);
+                gainValueLabel.textContent = `${db.toFixed(1)} dB`;
             };
         }
 
+        function startOutputMeter(){
+            if (!mediaState.outputAnalyser) return;
+            const analyser = mediaState.outputAnalyser;
+            analyser.fftSize = 256;
+            const data = new Uint8Array(analyser.frequencyBinCount);
+            const bars = outputAudioMeter.children;
+            const rootStyles = getComputedStyle(document.documentElement);
+            const okColor = rootStyles.getPropertyValue('--ok').trim();
+            const warnColor = rootStyles.getPropertyValue('--warn').trim();
+            const dangerColor = rootStyles.getPropertyValue('--danger').trim();
 
-        // --- 4. HOST Logic: Send commands when actions are taken ---
-        if (role === 'host') {
-            videoPlayer.controls = true; // Hosts can control the video
-            
-            function sendCommandToGuest(data) {
-                if (socket.readyState === WebSocket.OPEN) {
-                    socket.send(JSON.stringify(data));
+            function tick(){
+                analyser.getByteFrequencyData(data);
+                let sum = data.reduce((a,b) => a+b, 0);
+                const avg = sum / data.length;
+                const pct = Math.min(100, (avg/128) * 150 * (mediaState.outputGainNode.gain.value || 1));
+                
+                let color = okColor;
+                if (pct >= 95) color = dangerColor;
+                else if (pct >= 85) color = warnColor;
+
+                for(const bar of bars) {
+                    bar.style.backgroundColor = color;
                 }
+                bars[0].style.height = `${Math.min(100, pct * 0.8)}%`;
+                bars[1].style.height = `${Math.min(100, pct * 1.2)}%`;
+                bars[2].style.height = `${Math.min(100, pct * 0.7)}%`;
+                mediaState.outputLevelRAF = requestAnimationFrame(tick);
+            }
+            cancelAnimationFrame(mediaState.outputLevelRAF);
+            tick();
+        }
+        function stopOutputMeter(){
+            cancelAnimationFrame(mediaState.outputLevelRAF);
+            mediaState.outputLevelRAF = null;
+            if(outputAudioMeter) [...outputAudioMeter.children].forEach(bar => {
+                bar.style.height = '10%';
+                bar.style.backgroundColor = 'var(--ok)';
+            });
+        }
+
+        btnSpeakerNew.onclick = () => {
+            mediaState.speakerOn = !mediaState.speakerOn;
+            btnSpeakerNew.setAttribute('aria-pressed', mediaState.speakerOn);
+            btnSpeakerNew.classList.toggle('is-muted', !mediaState.speakerOn);
+            speakerGroup.classList.toggle('is-active', mediaState.speakerOn && state.playing);
+            btnSpeakerNew.dataset.tip = mediaState.speakerOn ? 'Mute' : 'Unmute';
+
+            if (mediaState.outputGainNode) {
+                mediaState.outputGainNode.gain.value = mediaState.speakerOn ? gainSlider.value : 0;
             }
 
-            videoPlayer.addEventListener('play', () => sendCommandToGuest({ command: 'play', time: videoPlayer.currentTime }));
-            videoPlayer.addEventListener('pause', () => sendCommandToGuest({ command: 'pause', time: videoPlayer.currentTime }));
-            videoPlayer.addEventListener('seeking', () => sendCommandToGuest({ command: 'seek', time: videoPlayer.currentTime }));
+            if (mediaState.speakerOn && state.playing) startOutputMeter();
+            else stopOutputMeter();
+        };
 
-            // Send a periodic 'sync' message to keep guests on track
-            window.syncInterval = setInterval(() => {
-                if (!videoPlayer.paused) {
-                    sendCommandToGuest({ command: 'sync', time: videoPlayer.currentTime });
-                }
-            }, 2500); // Sync every 2.5 seconds
+        speakerSel.onchange = async () => {
+          try {
+            const sinkId = speakerSel.value;
+            if (typeof videoEl.setSinkId !== 'undefined') {
+              await videoEl.setSinkId(sinkId);
+              await remoteVideoEl.setSinkId(sinkId);
+              if (mediaState.outputAudioCtx) {
+                await mediaState.outputAudioCtx.setSinkId(sinkId);
+              }
+              showToast(`Audio output set to ${speakerSel.options[speakerSel.selectedIndex].text}`);
+            } else {
+              showToast('Changing audio output is not supported by this browser.');
+            }
+          } catch (err) {
+            console.error('Error setting audio output:', err);
+            showToast('Failed to set audio output.');
+          }
+        };
+        
+        async function initPermissions() {
+          try {
+            const stream = await navigator.mediaDevices.getUserMedia({audio:true, video:true});
+            await getDevices();
+            stream.getTracks().forEach(track => track.stop());
+            if(micSel.options.length > 0) await requestMic(micSel.value);
+            if(camSel.options.length > 0) await requestCam(camSel.value);
+          } catch(e) {
+            console.warn('Permissions denied on initial load.', e);
+            showToast("Could not get camera/mic permissions.");
+            setMicState(false);
+            setCamState(false);
+          }
         }
-    }
+        
+        const btnGoLive = document.getElementById('btnGoLive'), testModeCheck = document.getElementById('testModeCheck'), roomPill = document.getElementById('roomPill'), roomIdLabel = document.getElementById('roomIdLabel'), participantsMenu = document.getElementById('participantsMenu'), btnCopyInvite = document.getElementById('btnCopyInvite'), emailInviteLink = document.getElementById('emailInviteLink'), btnRecord = document.getElementById('btnRecordNew'), endModal = document.getElementById('endModal');
+        let pc = null;
+        const firebaseConfig = {
+          apiKey: "AIzaSyDWQlG6jsOCei5UTHWZyAM6Yp2EWbnY-k0",
+          authDomain: "imboxo-live-test.firebaseapp.com",
+          databaseURL: "https://imboxo-live-test-default-rtdb.firebaseio.com",
+          projectId: "imboxo-live-test",
+          storageBucket: "imboxo-live-test.firebasestorage.app",
+          messagingSenderId: "663932175961",
+          appId: "1:663932175961:web:5937c969a51d5b44af1348"
+        };
+        let fbApp, fbDb, roomRef;
+        const USE_SIGNALING = firebaseConfig.apiKey && firebaseConfig.databaseURL; if (USE_SIGNALING) { fbApp = firebase.initializeApp(firebaseConfig); fbDb = firebase.database(); } else { console.warn("Firebase config is missing. Real 'Go Live' will not work."); }
+        testModeCheck.onchange = () => { state.isTesting = testModeCheck.checked; };
 
-    // --- 5. Add event listeners to the role buttons ---
-    hostBtn.addEventListener('click', () => initializeApp('host'));
-    guestBtn.addEventListener('click', () => initializeApp('guest'));
-});
-</script>
+        async function handleGoLiveClick() {
+            if (state.isTesting) {
+                // (The existing test mode logic remains the same)
+                btnGoLive.textContent = '✓ Testing';
+                btnGoLive.style.background = 'var(--cyan)';
+                btnGoLive.style.color = 'var(--bg)';
+                btnGoLive.style.fontWeight = '700';
+                btnGoLive.disabled = true;
+                document.querySelector('.toggle-group').style.display = 'none';
+                showToast("Test Mode started. Highlight products to see the preview.");
+                return;
+            }
 
+            if (!USE_SIGNALING) {
+                // (The existing fallback logic remains the same)
+                showToast("Firebase is not configured. Cannot go live.");
+                console.warn("Firebase config is missing. Real 'Go Live' will not work.");
+                return;
+            }
+
+            // --- NEW LIVE LOGIC ---
+            btnGoLive.disabled = true;
+            btnGoLive.textContent = 'Creating Room...';
+
+            pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+            setupPeerConnection(pc);
+
+            // Add local media tracks to the connection
+            if (mediaState.micStream) {
+              mediaState.micStream.getTracks().forEach(track => pc.addTrack(track, mediaState.micStream));
+            }
+            if (mediaState.camStream) {
+              mediaState.camStream.getTracks().forEach(track => pc.addTrack(track, mediaState.camStream));
+            }
+
+            // Reference to a new room in the 'rooms' collection
+            roomRef = fbDb.ref('rooms').push();
+            state.roomId = roomRef.key;
+            
+            const offerCandidates = roomRef.child('offerCandidates');
+            pc.onicecandidate = event => {
+              if (event.candidate) {
+                offerCandidates.push(event.candidate.toJSON());
+              }
+            };
+
+            // Create offer
+            const offerDescription = await pc.createOffer();
+            await pc.setLocalDescription(offerDescription);
+
+            const offer = { sdp: offerDescription.sdp, type: offerDescription.type, };
+            await roomRef.set({ offer });
+
+            // Update UI
+            roomIdLabel.textContent = state.roomId;
+            roomPill.style.display = 'inline-flex';
+            const newUrl = `${location.protocol}//${location.host}${location.pathname}?room=${state.roomId}`;
+            history.pushState({ path: newUrl }, '', newUrl); // Update URL without reloading
+            showToast("Room is live! Share the URL to invite guests.");
+            btnGoLive.textContent = '✓ Live';
+            btnGoLive.style.background = 'var(--ok)';
+
+            // Listen for the guest's answer
+            roomRef.on('value', async snapshot => {
+                const data = snapshot.val();
+                if (!pc.currentRemoteDescription && data?.answer) {
+                    const answerDescription = new RTCSessionDescription(data.answer);
+                    await pc.setRemoteDescription(answerDescription);
+                }
+            });
+            
+            // Listen for guest's ICE candidates
+            const answerCandidates = roomRef.child('answerCandidates');
+            answerCandidates.on('child_added', snapshot => {
+                const candidate = new RTCIceCandidate(snapshot.val());
+                pc.addIceCandidate(candidate);
+            });
+        }
+
+        function setupPeerConnection(peerConnection) {
+            // When the remote user adds a track, display it in the remote video element
+            peerConnection.ontrack = (event) => {
+                if (event.streams && event.streams[0]) {
+                    remoteVideoEl.srcObject = event.streams[0];
+                }
+            };
+            
+            // Handle connection state changes for UI feedback
+            peerConnection.onconnectionstatechange = () => {
+              console.log(`Connection state: ${peerConnection.connectionState}`);
+              if (peerConnection.connectionState === 'connected') {
+                showToast("Guest has connected!");
+                renderLayout(); // Re-render layout to show guest
+              }
+            };
+        }
+
+        async function joinRoom(roomId) {
+            setRole('guest'); // Change role to guest
+            roomRef = fbDb.ref(`rooms/${roomId}`);
+            const snapshot = await roomRef.once('value');
+            if (!snapshot.exists()) {
+                showToast("Room does not exist!");
+                return;
+            }
+
+            pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+            setupPeerConnection(pc);
+
+            // Add local media tracks
+            if (mediaState.micStream) {
+              mediaState.micStream.getTracks().forEach(track => pc.addTrack(track, mediaState.micStream));
+            }
+            if (mediaState.camStream) {
+              mediaState.camStream.getTracks().forEach(track => pc.addTrack(track, mediaState.camStream));
+            }
+
+            // Listen for host's ICE candidates
+            const offerCandidates = roomRef.child('offerCandidates');
+            offerCandidates.on('child_added', snapshot => {
+                const candidate = new RTCIceCandidate(snapshot.val());
+                pc.addIceCandidate(candidate);
+            });
+
+            // Set remote description from host's offer
+            const offerDescription = snapshot.val().offer;
+            await pc.setRemoteDescription(new RTCSessionDescription(offerDescription));
+
+            // Create Answer
+            const answerDescription = await pc.createAnswer();
+            await pc.setLocalDescription(answerDescription);
+            
+            const answer = { type: answerDescription.type, sdp: answerDescription.sdp, };
+            await roomRef.update({ answer });
+
+            // Push guest's ICE candidates
+            const answerCandidates = roomRef.child('answerCandidates');
+            pc.onicecandidate = event => {
+              if (event.candidate) {
+                answerCandidates.push(event.candidate.toJSON());
+              }
+            };
+
+            // Update UI
+            roomIdLabel.textContent = roomId;
+            roomPill.style.display = 'inline-flex';
+            btnGoLive.disabled = true;
+            btnGoLive.textContent = "Joined";
+        }
+
+        btnGoLive.onclick = handleGoLiveClick;
+        
+        document.getElementById('btnParticipantsNew').onclick = (e) => {
+          if (!state.roomId) { showToast("You must 'Go Live' to invite participants."); return; }
+          const subject = encodeURIComponent("Join my IMBOXO Live session!");
+          const body = encodeURIComponent(`${location.href}`);
+          emailInviteLink.href = `mailto:?subject=${subject}&body=${body}`;
+          e.stopPropagation();
+          openContextMenu(participantsMenu, e.currentTarget);
+        };
+        
+        btnCopyInvite.onclick = async () => { try { await navigator.clipboard.writeText(location.href); showToast("Invite link copied!"); } catch (e) { showToast("Failed to copy link."); } activeMenu.style.display = 'none'; };
+        
+        btnRecord.onclick = () => { if (mediaState.recording) stopRecording(); else startRecording(); };
+        function startRecording() {
+          if (!mediaState.camStream || !mediaState.micStream) { showToast("Camera and mic must be on to record."); return; }
+          const tracks = [...mediaState.camStream.getTracks(), ...mediaState.micStream.getTracks()];
+          if(remoteVideoEl.srcObject) { tracks.push(...remoteVideoEl.srcObject.getAudioTracks()); }
+          const streamToRecord = new MediaStream(tracks);
+          mediaState.recorder = new MediaRecorder(streamToRecord, { mimeType: 'video/webm' });
+          const chunks = [];
+          mediaState.recorder.ondataavailable = e => chunks.push(e.data);
+          mediaState.recorder.onstop = () => {
+            const blob = new Blob(chunks, { type: 'video/webm' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `imboxo-live-${new Date().toISOString()}.webm`;
+            a.click();
+            URL.revokeObjectURL(url);
+          };
+          mediaState.recorder.start();
+          mediaState.recording = true;
+          btnRecord.setAttribute('aria-pressed', true);
+          showToast("Recording started.");
+        }
+        function stopRecording() {
+          if (mediaState.recorder) mediaState.recorder.stop();
+          mediaState.recording = false;
+          btnRecord.setAttribute('aria-pressed', false);
+          showToast("Recording stopped. Download will start.");
+        }
+        
+        const btnEndNew = document.getElementById('btnEndNew');
+        if(btnEndNew) btnEndNew.onclick = () => { endModal.classList.add('open'); document.getElementById('btnEndForAll').style.display = state.role === 'host' ? 'block' : 'none'; }
+        document.getElementById('btnEndCancel').onclick = () => endModal.classList.remove('open'); document.getElementById('btnLeave').onclick = () => { if(roomRef) roomRef.off(); if(pc) pc.close(); location.href = location.pathname; }; document.getElementById('btnEndForAll').onclick = () => { if(roomRef) { roomRef.remove().then(() => { location.href = location.pathname; }); } else { location.href = location.pathname; } };
+        
+        (async () => {
+          try {
+            if (state.roomId && USE_SIGNALING) {
+              await joinRoom(state.roomId);
+            } else {
+              setRole('host');
+            }
+            mountLayoutGallery('studioGallery', false);
+            mountLayoutGallery('cinemaGallery', true);
+            mountLayoutGallery('shopGallery', false);
+            renderLayout();
+            loadFilm(films[0]);
+            makeCardsCollapsible();
+            if (state.role === 'host') {
+              renderHostCatalog();
+              renderLiveCollection();
+            }
+            
+            const chatToggles = document.querySelectorAll('.chat-overlay-toggle-input');
+            chatToggles.forEach(toggle => {
+                toggle.checked = state.chatOverlayVisible;
+                toggle.addEventListener('change', handleChatOverlayToggle);
+            });
+            
+            await initPermissions();
+          } catch (err) {
+            console.error("Failed to initialize the application:", err);
+            showToast("A critical error occurred during setup.");
+          }
+        })();
+        navigator.mediaDevices.addEventListener('devicechange', getDevices);
+
+    }); // --- END OF THE DOMContentLoaded WRAPPER ---
+  </script>
 </body>
 </html>

@@ -618,7 +618,13 @@
         btnModeStudio.onclick=()=> setMode('studio'); btnModeCinema.onclick=()=> setMode('cinema'); btnModeShop.onclick=()=> setMode('shop');
 
         const bus = new EventTarget();
-        function send(m){ if (roomRef && state.role === 'host') { roomRef.child('messages').push(m); } bus.dispatchEvent(new CustomEvent('m',{detail:m})); }
+        function send(m){
+            // Only the host sends messages to Firebase
+            if (roomRef && state.role === 'host') {
+                roomRef.child('messages').push(m);
+            }
+            // The host no longer dispatches the event locally.
+        }
         function onMsg(fn){ bus.addEventListener('m', e=> fn(e.detail)); }
 
         function wireChat(inputId, logId){
@@ -918,65 +924,67 @@
                 videoEl.addEventListener('loadedmetadata', resolve, { once: true });
             });
         }
-
-        function hostSeek(delta){ if(!state.filmLoaded) return; videoEl.currentTime=Math.max(0, videoEl.currentTime+delta); send({type:'seek',pos:videoEl.currentTime,t:performance.now()}); }
         
+        function hostSeek(delta){ if(!state.filmLoaded) return; videoEl.currentTime=Math.max(0, videoEl.currentTime+delta); send({type:'seek', pos:videoEl.currentTime, t:firebase.database.ServerValue.TIMESTAMP}); }
+                
         function sendStateUpdate() {
             if (state.role === 'host') send({ type: 'state_update', mode: state.mode, layout: state.layout, replaceHost: state.replaceHost, hostPiP: state.hostPiP });
         }
         
-        function hostPlayPause(){
-            if(!state.filmLoaded) return;
-            btnPlay.classList.remove('prompt-glow');
-            state.playing = !state.playing;
-            btnPlay.textContent = state.playing ? 'Pause' : 'Play';
-            btnPlay.classList.toggle('is-playing', state.playing);
-            
-            if(state.playing){
-                videoEl.play();
-                setupOutputAudioProcessing();
-                if(mediaState.speakerOn) startOutputMeter();
-                speakerGroup.classList.toggle('is-active', mediaState.speakerOn);
-                send({type:'play', pos:videoEl.currentTime, t:performance.now()});
+        function hostPlayPause() {
+            if (!state.filmLoaded || state.role !== 'host') return;
+
+            // Based on the CURRENT state, send the INVERSE command.
+            // The onMsg handler will perform the actual state change for everyone.
+            if (state.playing) {
+                // If it is currently playing, we intend to pause it.
+                send({ type: 'pause', pos: videoEl.currentTime, t: firebase.database.ServerValue.TIMESTAMP });
             } else {
-                videoEl.pause();
-                stopOutputMeter();
-                speakerGroup.classList.remove('is-active');
-                send({type:'pause', pos:videoEl.currentTime, t:performance.now()});
+                // If it is currently paused, we intend to play it.
+                send({ type: 'play', pos: videoEl.currentTime, t: firebase.database.ServerValue.TIMESTAMP });
             }
         }
 
-        onMsg(m=>{
+        onMsg(m => {
             if (m.type === 'chat') {
                 [chatLogStudio, chatLogCinema, chatLogShop].forEach(log => addChat(log, m));
                 showOverlayMessage(m);
                 return;
             }
-            if(state.role === 'guest') {
-                // Fix #3: Robust, event-driven synchronization logic
-                if (m.type === 'play' || m.type === 'seek' || m.type === 'pause' || m.type === 'force_sync') {
-                    const networkLag = (performance.now() - m.t) / 1000; // Lag in seconds
-                    const targetTime = m.pos + networkLag;
 
-                    // A hard seek is more reliable for these key events.
-                    videoEl.currentTime = targetTime;
-                    if(syncStateEl) syncStateEl.textContent = 'OK';
-                    videoEl.playbackRate = 1; // Reset playback rate after seek
+            // This logic now applies to EVERYONE, including the host, ensuring perfect sync.
+            if (m.type === 'play' || m.type === 'seek' || m.type === 'pause' || m.type === 'force_sync') {
+                // 'm.t' is now the MASTER server timestamp
+                const timeSinceEvent = Date.now() - m.t; // Time elapsed since the event occurred
+                const targetTime = m.pos + (timeSinceEvent / 1000); // Add elapsed time to get the true current position
 
-                    const shouldBePlaying = (m.type === 'play') || (m.type === 'force_sync' && m.isPlaying);
-                    if (shouldBePlaying) {
-                        ensureFilmReady().then(() => videoEl.play()).catch(() => {
-                            showOverlayMessage({ user: 'System', text: "Tap the film to start playback." });
-                        });
-                        if(!mediaState.outputAudioSetup) setupOutputAudioProcessing();
-                    } else { // Handles 'pause' and 'seek' (which should result in a paused state)
-                        videoEl.pause();
-                    }
-                    renderLayout();
+                videoEl.currentTime = targetTime; // Hard seek to the calculated time
+                if(syncStateEl) syncStateEl.textContent = 'OK';
+                videoEl.playbackRate = 1;
+
+                const shouldBePlaying = (m.type === 'play') || (m.type === 'force_sync' && m.isPlaying);
+                
+                if (shouldBePlaying) {
+                    // Check if video is ready to play
+                    ensureFilmReady().then(() => videoEl.play()).catch(() => {
+                        showOverlayMessage({ user: 'System', text: "Tap the film to start playback." });
+                    });
+                    if(!mediaState.outputAudioSetup) setupOutputAudioProcessing();
+                } else {
+                    videoEl.pause();
                 }
                 
+                // Update playing state and UI for everyone based on the message
+                state.playing = shouldBePlaying;
+                btnPlay.textContent = state.playing ? 'Pause' : 'Play';
+                btnPlay.classList.toggle('is-playing', state.playing);
+                renderLayout();
+            }
+            
+            // Guest-specific logic for state updates that don't involve playback
+            if(state.role === 'guest') {
                 if(m.type === 'film_selected') { loadFilm(m.film); }
-                if(m.type==='state_update') {
+                if(m.type === 'state_update') {
                     setMode(m.mode);
                     state.layout = m.layout;
                     state.replaceHost = m.replaceHost;
@@ -985,17 +993,6 @@
                     chkHostPiP.checked = m.hostPiP;
                     pipRow.style.display = m.replaceHost ? 'inline-flex' : 'none';
                     autoSetLayout(m.layout);
-                    if (m.video) {
-                        if (state.film?.id !== m.video.film?.id) { loadFilm(m.video.film); }
-                        const elapsed = (performance.now() - (m.video.t || performance.now())) / 1000;
-                        videoEl.currentTime = m.video.currentTime + elapsed;
-                        if (m.video.isPlaying) {
-                            videoEl.play().catch(e=>console.warn(e));
-                            if(!mediaState.outputAudioSetup) setupOutputAudioProcessing();
-                        } else {
-                            videoEl.pause();
-                        }
-                    }
                 }
             }
         });

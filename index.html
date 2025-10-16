@@ -667,6 +667,7 @@
           clearStage(stageStudio);
           const guestIsVisible = pc?.connectionState === 'connected';
           
+          // --- FINAL FIX: Role-aware rendering ---
           const localTile = makeTile('', state.role === 'host' ? 'Host' : 'You');
           localTile.appendChild(hostVideoEl);
           const remoteTile = makeTile('', state.role === 'host' ? 'Guest' : 'Host');
@@ -938,13 +939,11 @@
                 if(m.type==='tick' && !videoEl.paused){ gentlySeekTo(m.pos + (performance.now()-m.t)/1000); }
                 if(m.type === 'film_selected') { loadFilm(m.film); }
                 if(m.type==='state_update') {
-                    // Apply all state changes from the host
                     setMode(m.mode);
                     state.layout = m.layout;
                     state.replaceHost = m.replaceHost;
                     state.hostPiP = m.hostPiP;
                     
-                    // Update UI elements to match
                     chkReplaceHost.checked = m.replaceHost;
                     chkHostPiP.checked = m.hostPiP;
                     pipRow.style.display = m.replaceHost ? 'inline-flex' : 'none';

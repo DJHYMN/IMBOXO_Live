@@ -634,9 +634,9 @@
           roomId: new URL(location.href).searchParams.get("room") || null,
           liveCollection: {}, isTesting: false, chatOverlayVisible: true,
           remoteStream: null,
-          hostVideoPrimed: false, // Flag to ensure host video is ready for autoplay
+          hostVideoPrimed: false,
         };
-
+        
         function setMode(newMode){
           state.mode = newMode;
           document.body.setAttribute('data-mode', newMode);
@@ -670,17 +670,13 @@
           const sendMessage = () => {
             const v = input.value.trim();
             if(!v) return;
-            input.value='';
             const m = {type:'chat', user:state.role, ts:Date.now(), text:v};
-            // Chat messages are sent directly to Firebase by the host
-            if (roomRef && state.role === 'host') {
+            if (roomRef) {
                 roomRef.child('messages').push(m);
-            } else if (roomRef) {
-                // Guests also need to be able to send chat messages
-                roomRef.child('messages').push(m);
+            } else {
+                bus.dispatchEvent(new CustomEvent('chat-message', { detail: m }));
             }
-            // For the sender, add the chat locally immediately.
-            bus.dispatchEvent(new CustomEvent('chat-message', { detail: m }));
+            input.value = '';
           };
           btn.onclick = sendMessage;
           input.onkeydown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } };
@@ -864,10 +860,12 @@
         const filmThumb=document.getElementById('filmThumb'), filmStatus=document.getElementById('filmStatus'), syncStateEl=document.getElementById('syncState'), chkReplaceHost=document.getElementById('chkReplaceHost'), chkHostPiP=document.getElementById('chkHostPiP'), pipRow=document.getElementById('pipRow'), btnPlay = document.getElementById('btnPlay'), btnChangeFilm = document.getElementById('btnChangeFilm');
         const btnResync = document.getElementById('btnResync');
 
-        btnResync.onclick = () => {
+        btnResync.onclick = async () => {
           if (state.role === 'host' && state.filmLoaded) {
-            send({ type: 'force_sync', pos: videoEl.currentTime, t: firebase.database.ServerValue.TIMESTAMP, isPlaying: state.playing });
-            showToast("Resync signal sent to all guests.");
+            if (await primeHostVideo()) {
+                send({ type: 'force_sync', pos: videoEl.currentTime, t: firebase.database.ServerValue.TIMESTAMP, isPlaying: state.playing });
+                showToast("Resync signal sent to all guests.");
+            }
           }
         };
         const films = [
@@ -901,7 +899,7 @@
                 filmThumb.classList.add('is-ready');
                 state.filmLoaded=true;
                 state.playing = false;
-                state.hostVideoPrimed = false; // Reset priming flag for new film
+                state.hostVideoPrimed = false;
                 mediaState.outputAudioSetup = false;
                 stopOutputMeter();
                 if (btnPlay) {
@@ -926,36 +924,28 @@
             });
         }
 
-        function hostSeek(delta){ if(!state.filmLoaded) return; videoEl.currentTime=Math.max(0, videoEl.currentTime+delta); send({type:'seek', pos:videoEl.currentTime, t:firebase.database.ServerValue.TIMESTAMP}); }
+        async function hostSeek(delta) {
+            if (!state.filmLoaded || state.role !== 'host') return;
+            if (await primeHostVideo()) {
+                videoEl.currentTime = Math.max(0, videoEl.currentTime + delta);
+                send({ type: 'seek', pos: videoEl.currentTime, t: firebase.database.ServerValue.TIMESTAMP });
+            }
+        }
         
         function sendStateUpdate() {
             if (state.role === 'host') send({ type: 'state_update', mode: state.mode, layout: state.layout, replaceHost: state.replaceHost, hostPiP: state.hostPiP });
         }
         
-        function hostPlayPause() {
+        async function hostPlayPause() {
             if (!state.filmLoaded || state.role !== 'host') return;
-
-            if (!state.hostVideoPrimed) {
-                videoEl.muted = true;
-                videoEl.play().then(() => {
-                    videoEl.pause();
-                    videoEl.muted = false;
-                    state.hostVideoPrimed = true;
-                    sendPlayCommand();
-                }).catch(() => {
-                    // This fallback handles cases where even a muted play is blocked
-                    videoEl.muted = false;
-                    state.hostVideoPrimed = true;
-                    sendPlayCommand();
-                });
-            } else {
-                sendPlayCommand();
-            }
             
-            function sendPlayCommand() {
+            const canProceed = await primeHostVideo();
+            if (canProceed) {
+                // If it's already playing, we want to pause.
                 if (state.playing) {
                     send({ type: 'pause', pos: videoEl.currentTime, t: firebase.database.ServerValue.TIMESTAMP });
                 } else {
+                // If it's paused, we want to play.
                     send({ type: 'play', pos: videoEl.currentTime, t: firebase.database.ServerValue.TIMESTAMP });
                 }
             }
@@ -974,7 +964,8 @@
                 return;
             }
 
-            if (m.type === 'play' || m.type === 'seek' || m.type === 'pause' || m.type === 'force_sync') {
+            // Host has already acted locally for play/pause. This block is now for GUESTS ONLY for playback.
+            if (state.role === 'guest' && (m.type === 'play' || m.type === 'seek' || m.type === 'pause' || m.type === 'force_sync')) {
                 const timeSinceEvent = Date.now() - m.t;
                 const targetTime = m.pos + (timeSinceEvent / 1000);
                 videoEl.currentTime = targetTime;
@@ -983,9 +974,8 @@
                 const shouldBePlaying = (m.type === 'play') || (m.type === 'force_sync' && m.isPlaying);
                 if (shouldBePlaying) {
                     ensureFilmReady().then(() => videoEl.play()).catch((e) => {
-                        console.warn("Playback failed:", e);
-                        // The guest overlay handles this for guests. This is a fallback.
-                        showOverlayMessage({ user: 'System', text: "Tap screen to start playback." });
+                        console.warn("Guest playback failed, showing overlay:", e);
+                        document.getElementById('guestReadyOverlay').style.display = 'flex';
                     });
                     if(!mediaState.outputAudioSetup) setupOutputAudioProcessing();
                 } else {
@@ -994,7 +984,6 @@
                 state.playing = shouldBePlaying;
                 btnPlay.textContent = state.playing ? 'Pause' : 'Play';
                 btnPlay.classList.toggle('is-playing', state.playing);
-                renderLayout();
             }
             
             if(state.role === 'guest') {
@@ -1017,7 +1006,7 @@
             showOverlayMessage(e.detail);
         });
 
-        btnPlay.onclick=hostPlayPause;
+        btnPlay.onclick = hostPlayPause;
         document.getElementById('btnSeekBack').onclick=()=> hostSeek(-10);
         document.getElementById('btnSeekFwd').onclick=()=> hostSeek(+10);
         chkReplaceHost.onchange=()=>{ state.replaceHost=chkReplaceHost.checked; pipRow.style.display = state.replaceHost ? 'inline-flex' : 'none'; renderLayout(); sendStateUpdate(); };
@@ -1035,7 +1024,7 @@
 
         function renderLiveCollection(highlightedId) { if (!liveProductsList) return; liveProductsList.innerHTML = ''; if (Object.keys(state.liveCollection).length === 0) { liveProductsList.textContent = 'Add products from your catalog to feature them during the live session.'; return; } Object.values(state.liveCollection).forEach(p => { const isLive = p.id === highlightedId; const card = document.createElement('div'); card.className = 'card'; card.innerHTML = `<div class="row" style="gap: 10px;"><img src="${p.image}" style="width: 48px; height: 48px; border-radius: 6px; object-fit: cover;"><div class="stack" style="gap: 0; flex: 1; min-width: 0;"><div class="p-title" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(p.title)}</div><div class="p-price">${fmtUSD.format(p.price)}</div></div><button class="btn primary btn-highlight ${isLive ? 'is-live' : ''}" data-product-id="${p.id}">${isLive ? '✓ LIVE' : 'Highlight'}</button></div>`; liveProductsList.appendChild(card); }); }
         liveProductsList.addEventListener('click', (e) => { if (e.target.classList.contains('btn-highlight')) { const productId = e.target.dataset.productId; if (btnGoLive.textContent.includes('Testing') || state.roomId) { const currentlyLive = e.target.classList.contains('is-live'); renderLiveCollection(currentlyLive ? null : productId); renderProductSpotlight(currentlyLive ? null : state.liveCollection[productId]); } else { showToast("You must 'Go Live' or be in 'Test Mode' to highlight products."); } } });
-        function renderProductSpotlight(product) { if (!product) { productSpotlight.classList.remove('open'); return; } productSpotlight.innerHTML = `<img src="${product.image}" alt="${escapeHtml(product.title)}"><div class="info"><div class="p-title">${escapeHtml(product.title)}</div><div class="row"><span class="p-price">${fmtUSD.format(product.price)}</span><a href="${product.url}" target="_blank" rel="noopener" class="btn primary">Checkout</a></div></div>`; if(state.mode!=='shop'){ showToast("Shop features are only available in the Shop view."); return; } productSpotlight.classList.add('open'); }
+        function renderProductSpotlight(product) { if (!product) { productSpotlight.classList.remove('open'); return; } productSpotlight.innerHTML = `<img src="${product.image}" alt="${escapeHtml(product.title)}"><div class="info"><div class="p-title">${escapeHtml(product.title)}</div><div class="row"><span class="p-price">${fmtUSD.format(p.price)}</span><a href="${product.url}" target="_blank" rel="noopener" class="btn primary">Checkout</a></div></div>`; if(state.mode!=='shop'){ showToast("Shop features are only available in the Shop view."); return; } productSpotlight.classList.add('open'); }
         
         const canvasChatOverlay = document.getElementById('canvasChatOverlay');
         function showOverlayMessage(msg) { if (!state.chatOverlayVisible) return; if (canvasChatOverlay.children.length >= 6) { canvasChatOverlay.firstChild.remove(); } const msgEl = document.createElement('div'); msgEl.className = 'canvas-chat-msg'; msgEl.innerHTML = `<strong>${escapeHtml(msg.user)}:</strong> ${escapeHtml(msg.text)}`; canvasChatOverlay.appendChild(msgEl); setTimeout(() => msgEl.classList.add('visible'), 50); }

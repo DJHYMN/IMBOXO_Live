@@ -709,7 +709,9 @@
             clearStage(stageCinema);
             const guestIsVisible = pc?.connectionState === 'connected';
 
+            // --- FINAL FIX: Role-aware PiP ---
             pipVideoEl.srcObject = (state.role === 'host') ? mediaState.camStream : remoteVideoEl.srcObject;
+            
             pipVideoEl.play().catch(e => console.warn("PiP play failed", e));
             hostPiP.innerHTML = '';
             hostPiP.appendChild(pipVideoEl);
@@ -792,7 +794,9 @@
                 }
             });
             renderLayout();
-            sendStateUpdate();
+            if (state.role === 'host') {
+                sendStateUpdate();
+            }
         }
 
         function layoutThumb(type, cinema=false) {
@@ -949,11 +953,13 @@
                 if(m.type==='tick' && !videoEl.paused){ gentlySeekTo(m.pos + (performance.now()-m.t)/1000); }
                 if(m.type === 'film_selected') { loadFilm(m.film); }
                 if(m.type==='state_update') {
+                    // Apply all state changes from the host
                     setMode(m.mode);
                     state.layout = m.layout;
                     state.replaceHost = m.replaceHost;
                     state.hostPiP = m.hostPiP;
                     
+                    // Update UI elements to match
                     chkReplaceHost.checked = m.replaceHost;
                     chkHostPiP.checked = m.hostPiP;
                     pipRow.style.display = m.replaceHost ? 'inline-flex' : 'none';
@@ -1578,3 +1584,4 @@
   </script>
 </body>
 </html>
+

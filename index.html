@@ -680,12 +680,7 @@
                       remoteTile.className = 'tile span-6';
                       if(state.role === 'host') {
                         stageStudio.appendChild(localTile);
-                        // ✨ FIX: Add guest tile or a placeholder
-                        if(guestIsVisible) {
-                            stageStudio.appendChild(remoteTile);
-                        } else {
-                            stageStudio.appendChild(makeTile('span-6', 'Guest Slot'));
-                        }
+                        if(guestIsVisible) stageStudio.appendChild(remoteTile);
                       } else {
                         stageStudio.appendChild(remoteTile); // Host is remote
                         stageStudio.appendChild(localTile); // Guest is local
@@ -694,30 +689,20 @@
                       localTile.className = 'tile span-6';
                       remoteTile.className = 'tile span-6';
                       stageStudio.appendChild(localTile);
-                      // ✨ FIX: Add guest tile or a placeholder
-                      if(guestIsVisible) {
-                          stageStudio.appendChild(remoteTile);
-                      } else {
-                          stageStudio.appendChild(makeTile('span-6', 'Guest Slot'));
-                      }
-                      // ✨ FIX: Add the remaining 2 placeholders to guarantee a 4-cell grid
+                      if(guestIsVisible) stageStudio.appendChild(remoteTile);
                       stageStudio.appendChild(makeTile('span-6', ''));
                       stageStudio.appendChild(makeTile('span-6', ''));
                   } else if (state.layout === '3x3') {
                       localTile.className = 'tile span-4';
                       remoteTile.className = 'tile span-4';
                       stageStudio.appendChild(localTile);
-                      // ✨ FIX: Add guest tile or a placeholder
-                      if(guestIsVisible) {
-                          stageStudio.appendChild(remoteTile);
-                      } else {
-                          stageStudio.appendChild(makeTile('span-4', 'Guest Slot'));
-                      }
-                      // ✨ FIX: Add the remaining 7 placeholders to guarantee a 9-cell grid
-                      for(let i=0; i<7; i++) {
-                          stageStudio.appendChild(makeTile('span-4', ''));
-                      }
+                      if(guestIsVisible) stageStudio.appendChild(remoteTile);
+                      for(let i=0; i<7; i++) stageStudio.appendChild(makeTile('span-4', ''));
                   }
+                  
+                  // ✨ FIX: Force videos to play after being re-added to the page
+                  hostVideoEl.play().catch(e => console.warn("Host re-play failed", e));
+                  remoteVideoEl.play().catch(e => console.warn("Remote re-play failed", e));
                 }
         
         const videoEl = document.createElement('video'); videoEl.id='partyVideo'; videoEl.setAttribute('playsinline',''); videoEl.setAttribute('webkit-playsinline',''); videoEl.crossOrigin = "anonymous"; videoEl.controls=false;

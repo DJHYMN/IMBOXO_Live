@@ -998,9 +998,7 @@
                         }
                         if(m.type==='pause'){ gentlySeekTo(m.pos); videoEl.pause(); }
                         if(m.type==='seek'){ gentlySeekTo(m.pos); }
-                        if(m.type==='tick'){ // ✨ FIX: The faulty check '!videoEl.paused' has been removed
-                            gentlySeekTo(m.pos + (performance.now()-m.t)/1000);
-                        }
+                        if(m.type==='tick'){ gentlySeekTo(m.pos + (performance.now()-m.t)/1000); }
                         if(m.type === 'film_selected') { loadFilm(m.film); }
                         if(m.type==='state_update') {
                             // Apply all state changes from the host
@@ -1015,6 +1013,20 @@
                             pipRow.style.display = m.replaceHost ? 'inline-flex' : 'none';
                             
                             autoSetLayout(m.layout);
+
+                            // ✨ FIX: Handle the initial video state from the host
+                            if (m.video) {
+                                if (state.film?.id !== m.video.film?.id) {
+                                    loadFilm(m.video.film);
+                                }
+                                videoEl.currentTime = m.video.currentTime;
+                                if (m.video.isPlaying) {
+                                    videoEl.play().catch(e=>console.warn(e));
+                                    setupOutputAudioProcessing();
+                                } else {
+                                    videoEl.pause();
+                                }
+                            }
                         }
                     }
                 });
@@ -1448,39 +1460,56 @@
         }
 
         function setupPeerConnection(peerConnection) {
-            peerConnection.oniceconnectionstatechange = () => console.log(`[${state.role}] ICE Connection State: ${peerConnection.iceConnectionState}`);
-            peerConnection.onsignalingstatechange = () => console.log(`[${state.role}] Signaling State: ${peerConnection.signalingState}`);
+                    peerConnection.oniceconnectionstatechange = () => console.log(`[${state.role}] ICE Connection State: ${peerConnection.iceConnectionState}`);
+                    peerConnection.onsignalingstatechange = () => console.log(`[${state.role}] Signaling State: ${peerConnection.signalingState}`);
 
-            peerConnection.ontrack = (event) => {
-                console.log(`[${state.role}] ONTRACK FIRED! A remote stream has arrived.`, event);
-                if (event.streams && event.streams[0]) {
-                    console.log(`[${state.role}] Attaching remote stream to video element:`, event.streams[0]);
-                    remoteVideoEl.srcObject = event.streams[0];
-                } else {
-                    console.warn(`[${state.role}] Ontrack event fired but no streams found.`);
+                    peerConnection.ontrack = (event) => {
+                        console.log(`[${state.role}] ONTRACK FIRED! A remote stream has arrived.`, event);
+                        if (event.streams && event.streams[0]) {
+                            console.log(`[${state.role}] Attaching remote stream to video element:`, event.streams[0]);
+                            remoteVideoEl.srcObject = event.streams[0];
+                        } else {
+                            console.warn(`[${state.role}] Ontrack event fired but no streams found.`);
+                        }
+                    };
+
+                    peerConnection.onconnectionstatechange = () => {
+                      console.log(`[${state.role}] Connection state: ${peerConnection.connectionState}`);
+                      if (peerConnection.connectionState === 'connected') {
+                          if (state.role === 'host') {
+                              showToast("Guest has connected!");
+                              
+                              send({
+                                  type: 'state_update',
+                                  mode: state.mode,
+                                  layout: state.layout,
+                                  replaceHost: state.replaceHost,
+                                  hostPiP: state.hostPiP,
+                                  video: {
+                                      isPlaying: state.playing,
+                                      currentTime: videoEl.currentTime,
+                                      film: state.film,
+                                      t: performance.now() // ✨ SYNC FIX: Add a timestamp to account for latency.
+                                  }
+                              });
+
+                              // ✨ LAYOUT FIX: Remove the hardcoded layout change.
+                              // autoSetLayout('split'); // This line has been removed.
+                          
+                          } else { // Guest
+                              showToast("Connected to host!");
+                          }
+                      } else if (['disconnected', 'closed', 'failed'].includes(peerConnection.connectionState)) {
+                          if (state.role === 'host') {
+                              showToast("Guest has disconnected.");
+                              autoSetLayout('host');
+                          } else {
+                              showToast("Disconnected from host.");
+                          }
+                      }
+                      renderLayout();
+                    };
                 }
-            };
-
-            peerConnection.onconnectionstatechange = () => {
-              console.log(`[${state.role}] Connection state: ${peerConnection.connectionState}`);
-              if (peerConnection.connectionState === 'connected') {
-                  if (state.role === 'host') {
-                      showToast("Guest has connected!");
-                      autoSetLayout('split');
-                  } else { // Guest
-                      showToast("Connected to host!");
-                  }
-              } else if (['disconnected', 'closed', 'failed'].includes(peerConnection.connectionState)) {
-                  if (state.role === 'host') {
-                      showToast("Guest has disconnected.");
-                      autoSetLayout('host');
-                  } else {
-                      showToast("Disconnected from host.");
-                  }
-              }
-              renderLayout();
-            };
-        }
 
         async function joinRoom(roomId) {
             setRole('guest');

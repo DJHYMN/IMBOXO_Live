@@ -1033,7 +1033,6 @@
                         }
                     }
                 });
-
         setInterval(()=>{ if(state.role==='host' && state.playing) send({type:'tick',pos:videoEl.currentTime,t:performance.now()}); }, 1500);
         btnPlay.onclick=hostPlayPause; document.getElementById('btnSeekBack').onclick=()=> hostSeek(-10); document.getElementById('btnSeekFwd').onclick=()=> hostSeek(+10);
         chkReplaceHost.onchange=()=>{ state.replaceHost=chkReplaceHost.checked; pipRow.style.display = state.replaceHost ? 'inline-flex' : 'none'; renderLayout(); sendStateUpdate(); };

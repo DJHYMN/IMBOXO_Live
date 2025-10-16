@@ -1488,14 +1488,12 @@
                                   video: {
                                       isPlaying: state.playing,
                                       currentTime: videoEl.currentTime,
-                                      film: state.film,
-                                      t: performance.now() // ✨ SYNC FIX: Add a timestamp to account for latency.
+                                      film: state.film
                                   }
                               });
 
-                              // ✨ LAYOUT FIX: Remove the hardcoded layout change.
-                              // autoSetLayout('split'); // This line has been removed.
-                          
+                              // ✨ FIX: This line was incorrectly forcing the host's layout. It has been removed.
+                              // autoSetLayout('split');
                           } else { // Guest
                               showToast("Connected to host!");
                           }

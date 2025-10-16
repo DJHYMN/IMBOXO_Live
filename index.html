@@ -634,7 +634,6 @@
           roomId: new URL(location.href).searchParams.get("room") || null,
           liveCollection: {}, isTesting: false, chatOverlayVisible: true,
           remoteStream: null,
-          hostVideoPrimed: false,
         };
         
         function setMode(newMode){
@@ -860,12 +859,10 @@
         const filmThumb=document.getElementById('filmThumb'), filmStatus=document.getElementById('filmStatus'), syncStateEl=document.getElementById('syncState'), chkReplaceHost=document.getElementById('chkReplaceHost'), chkHostPiP=document.getElementById('chkHostPiP'), pipRow=document.getElementById('pipRow'), btnPlay = document.getElementById('btnPlay'), btnChangeFilm = document.getElementById('btnChangeFilm');
         const btnResync = document.getElementById('btnResync');
 
-        btnResync.onclick = async () => {
+        btnResync.onclick = () => {
           if (state.role === 'host' && state.filmLoaded) {
-            if (await primeHostVideo()) {
-                send({ type: 'force_sync', pos: videoEl.currentTime, t: firebase.database.ServerValue.TIMESTAMP, isPlaying: state.playing });
-                showToast("Resync signal sent to all guests.");
-            }
+            send({ type: 'force_sync', pos: videoEl.currentTime, t: firebase.database.ServerValue.TIMESTAMP, isPlaying: state.playing });
+            showToast("Resync signal sent to all guests.");
           }
         };
         const films = [
@@ -923,34 +920,34 @@
                 videoEl.addEventListener('loadedmetadata', resolve, { once: true });
             });
         }
-
-        async function hostSeek(delta) {
-            if (!state.filmLoaded || state.role !== 'host') return;
-            if (await primeHostVideo()) {
-                videoEl.currentTime = Math.max(0, videoEl.currentTime + delta);
-                send({ type: 'seek', pos: videoEl.currentTime, t: firebase.database.ServerValue.TIMESTAMP });
-            }
-        }
         
         function sendStateUpdate() {
             if (state.role === 'host') send({ type: 'state_update', mode: state.mode, layout: state.layout, replaceHost: state.replaceHost, hostPiP: state.hostPiP });
         }
         
-        async function hostPlayPause() {
+        // --- NEW HOST CONTROL FUNCTIONS ---
+        function hostPlayPause() {
             if (!state.filmLoaded || state.role !== 'host') return;
-            
-            const canProceed = await primeHostVideo();
-            if (canProceed) {
-                // If it's already playing, we want to pause.
-                if (state.playing) {
-                    send({ type: 'pause', pos: videoEl.currentTime, t: firebase.database.ServerValue.TIMESTAMP });
-                } else {
-                // If it's paused, we want to play.
-                    send({ type: 'play', pos: videoEl.currentTime, t: firebase.database.ServerValue.TIMESTAMP });
-                }
+            state.playing = !state.playing;
+            btnPlay.textContent = state.playing ? 'Pause' : 'Play';
+            btnPlay.classList.toggle('is-playing', state.playing);
+            btnPlay.classList.remove('prompt-glow');
+
+            if (state.playing) {
+                videoEl.play();
+                send({ type: 'play', pos: videoEl.currentTime, t: firebase.database.ServerValue.TIMESTAMP });
+            } else {
+                videoEl.pause();
+                send({ type: 'pause', pos: videoEl.currentTime, t: firebase.database.ServerValue.TIMESTAMP });
             }
         }
 
+        function hostSeek(delta) {
+            if (!state.filmLoaded || state.role !== 'host') return;
+            videoEl.currentTime = Math.max(0, videoEl.currentTime + delta);
+            send({ type: 'seek', pos: videoEl.currentTime, t: firebase.database.ServerValue.TIMESTAMP });
+        }
+        
         onMsg(m => {
             if (m.type === 'chat') {
                 bus.dispatchEvent(new CustomEvent('chat-message', { detail: m }));
@@ -963,30 +960,29 @@
                 sendStateUpdate();
                 return;
             }
-
-            // Host has already acted locally for play/pause. This block is now for GUESTS ONLY for playback.
-            if (state.role === 'guest' && (m.type === 'play' || m.type === 'seek' || m.type === 'pause' || m.type === 'force_sync')) {
-                const timeSinceEvent = Date.now() - m.t;
-                const targetTime = m.pos + (timeSinceEvent / 1000);
-                videoEl.currentTime = targetTime;
-                if(syncStateEl) syncStateEl.textContent = 'OK';
-                videoEl.playbackRate = 1;
-                const shouldBePlaying = (m.type === 'play') || (m.type === 'force_sync' && m.isPlaying);
-                if (shouldBePlaying) {
-                    ensureFilmReady().then(() => videoEl.play()).catch((e) => {
-                        console.warn("Guest playback failed, showing overlay:", e);
-                        document.getElementById('guestReadyOverlay').style.display = 'flex';
-                    });
-                    if(!mediaState.outputAudioSetup) setupOutputAudioProcessing();
-                } else {
-                    videoEl.pause();
-                }
-                state.playing = shouldBePlaying;
-                btnPlay.textContent = state.playing ? 'Pause' : 'Play';
-                btnPlay.classList.toggle('is-playing', state.playing);
-            }
             
-            if(state.role === 'guest') {
+            if (state.role === 'guest') {
+                if (m.type === 'play' || m.type === 'seek' || m.type === 'pause' || m.type === 'force_sync') {
+                    const timeSinceEvent = Date.now() - m.t;
+                    const targetTime = m.pos + (timeSinceEvent / 1000);
+                    videoEl.currentTime = targetTime;
+                    if(syncStateEl) syncStateEl.textContent = 'OK';
+                    videoEl.playbackRate = 1;
+                    const shouldBePlaying = (m.type === 'play') || (m.type === 'force_sync' && m.isPlaying);
+                    if (shouldBePlaying) {
+                        ensureFilmReady().then(() => videoEl.play()).catch((e) => {
+                            console.warn("Guest playback failed, showing overlay:", e);
+                            document.getElementById('guestReadyOverlay').style.display = 'flex';
+                        });
+                        if(!mediaState.outputAudioSetup) setupOutputAudioProcessing();
+                    } else {
+                        videoEl.pause();
+                    }
+                    state.playing = shouldBePlaying;
+                    btnPlay.textContent = state.playing ? 'Pause' : 'Play';
+                    btnPlay.classList.toggle('is-playing', state.playing);
+                }
+                
                 if(m.type === 'film_selected') { loadFilm(m.film); }
                 if(m.type === 'state_update') {
                     setMode(m.mode);
@@ -1006,7 +1002,7 @@
             showOverlayMessage(e.detail);
         });
 
-        btnPlay.onclick = hostPlayPause;
+        btnPlay.onclick=hostPlayPause;
         document.getElementById('btnSeekBack').onclick=()=> hostSeek(-10);
         document.getElementById('btnSeekFwd').onclick=()=> hostSeek(+10);
         chkReplaceHost.onchange=()=>{ state.replaceHost=chkReplaceHost.checked; pipRow.style.display = state.replaceHost ? 'inline-flex' : 'none'; renderLayout(); sendStateUpdate(); };

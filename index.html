@@ -438,9 +438,9 @@
               </div>
             </div>
             <div class="card">
-                          <div class="section-title">Playback</div>
-                          <div class="row"> <button class="btn" id="btnPlay">Play</button> <button class="btn" id="btnSeekBack">-10s</button> <button class="btn" id="btnSeekFwd">+10s</button> <button class="btn only-host" id="btnResync">Resync All</button> <span class="pill">Sync: <span id="syncState" style="margin-left:6px">Idle</span></span> </div>
-                        </div>
+              <div class="section-title">Playback</div>
+              <div class="row"> <button class="btn" id="btnPlay">Play</button> <button class="btn" id="btnSeekBack">-10s</button> <button class="btn" id="btnSeekFwd">+10s</button> <button class="btn only-host" id="btnResync">Resync All</button> <span class="pill">Sync: <span id="syncState" style="margin-left:6px">Idle</span></span> </div>
+            </div>
             <div class="card">
               <div class="section-title">Cinema Layout</div>
               <div id="cinemaGallery" class="layout-gallery" aria-label="Cinema Layouts"></div>
@@ -596,6 +596,7 @@
           mode:'studio', role:'host', filmLoaded:false, playing:false, layout:'host', film:null, replaceHost:false, hostPiP:true,
           roomId: new URL(location.href).searchParams.get("room") || null,
           liveCollection: {}, isTesting: false, chatOverlayVisible: true,
+          remoteStream: null, // <-- Fix #2: Added to reliably store the guest's video stream
         };
 
         function setMode(newMode){
@@ -669,6 +670,8 @@
           const localTile = makeTile('', state.role === 'host' ? 'Host' : 'You');
           localTile.appendChild(hostVideoEl);
           const remoteTile = makeTile('', state.role === 'host' ? 'Guest' : 'Host');
+          // Fix #2 Cont: Always re-assign the stream from state when rendering
+          if (state.remoteStream) remoteVideoEl.srcObject = state.remoteStream;
           remoteTile.appendChild(remoteVideoEl);
           
           if (state.layout === 'host') {
@@ -731,7 +734,8 @@
         function renderCinema() {
             clearStage(stageCinema);
             const guestIsVisible = pc?.connectionState === 'connected';
-            pipVideoEl.srcObject = (state.role === 'host') ? mediaState.camStream : remoteVideoEl.srcObject;
+            const pipStream = (state.role === 'host') ? mediaState.camStream : state.remoteStream;
+            if(pipStream) pipVideoEl.srcObject = pipStream;
             
             pipVideoEl.play().catch(e => console.warn("PiP play failed", e));
             hostPiP.innerHTML = '';
@@ -739,11 +743,15 @@
 
             const hostTile = makeTile('', 'Host');
             const guestTile = makeTile('', 'Guest');
+            
+            // Fix #2 Cont: Ensure the correct stream (local vs remote) is assigned
+            const remoteStreamForLayout = state.remoteStream;
+
             if(state.role === 'host') {
                 hostTile.appendChild(hostVideoEl);
-                guestTile.appendChild(remoteVideoEl);
+                if(remoteStreamForLayout) guestTile.appendChild(remoteVideoEl);
             } else {
-                hostTile.appendChild(remoteVideoEl);
+                if(remoteStreamForLayout) hostTile.appendChild(remoteVideoEl);
                 guestTile.appendChild(hostVideoEl);
             }
             
@@ -904,40 +912,13 @@
             }
         }
         
-        let driftAvg=0;
-        function gentlySeekTo(target){
-            const d = target - videoEl.currentTime;
-            driftAvg = 0.8 * driftAvg + 0.2 * d;
-            
-            if(syncStateEl) syncStateEl.textContent = Math.abs(driftAvg) < .25 ? 'OK' : 'Adjusting';
-
-            if (Math.abs(d) > 1.5) {
-                console.log(`DESYNC DETECTED: a ${d.toFixed(2)}s drift. Forcing a hard seek.`);
-                videoEl.currentTime = target;
-                videoEl.playbackRate = 1;
-                return;
-            }
-
-            if (Math.abs(d) > 0.1) {
-              const rate = 1 + Math.max(-0.1, Math.min(0.1, d * 0.5));
-              videoEl.playbackRate = rate;
-            } else {
-              videoEl.playbackRate = 1;
-            }
-        }
-
         function ensureFilmReady() {
             return new Promise(resolve => {
                 if (videoEl.readyState >= 1) return resolve();
-                const onReady = () => {
-                    videoEl.removeEventListener('loadedmetadata', onReady);
-                    resolve();
-                };
-                videoEl.addEventListener('loadedmetadata', onReady, { once: true });
+                videoEl.addEventListener('loadedmetadata', resolve, { once: true });
             });
         }
 
-        
         function hostSeek(delta){ if(!state.filmLoaded) return; videoEl.currentTime=Math.max(0, videoEl.currentTime+delta); send({type:'seek',pos:videoEl.currentTime,t:performance.now()}); }
         
         function sendStateUpdate() {
@@ -972,16 +953,15 @@
                 return;
             }
             if(state.role === 'guest') {
-                if(m.type==='play' || m.type==='seek' || m.type==='pause' || m.type==='force_sync'){
-                    const targetTime = m.pos + (performance.now() - m.t) / 1000;
-                    const drift = targetTime - videoEl.currentTime;
+                // Fix #3: Robust, event-driven synchronization logic
+                if (m.type === 'play' || m.type === 'seek' || m.type === 'pause' || m.type === 'force_sync') {
+                    const networkLag = (performance.now() - m.t) / 1000; // Lag in seconds
+                    const targetTime = m.pos + networkLag;
 
-                    if (Math.abs(drift) > 1.5) {
-                        videoEl.currentTime = targetTime;
-                        videoEl.playbackRate = 1;
-                    } else {
-                        gentlySeekTo(targetTime);
-                    }
+                    // A hard seek is more reliable for these key events.
+                    videoEl.currentTime = targetTime;
+                    if(syncStateEl) syncStateEl.textContent = 'OK';
+                    videoEl.playbackRate = 1; // Reset playback rate after seek
 
                     const shouldBePlaying = (m.type === 'play') || (m.type === 'force_sync' && m.isPlaying);
                     if (shouldBePlaying) {
@@ -989,15 +969,12 @@
                             showOverlayMessage({ user: 'System', text: "Tap the film to start playback." });
                         });
                         if(!mediaState.outputAudioSetup) setupOutputAudioProcessing();
-                    } else {
+                    } else { // Handles 'pause' and 'seek' (which should result in a paused state)
                         videoEl.pause();
                     }
                     renderLayout();
                 }
-            }
-
                 
-                if(m.type==='tick'){ gentlySeekTo(m.pos + (performance.now()-m.t)/1000); }
                 if(m.type === 'film_selected') { loadFilm(m.film); }
                 if(m.type==='state_update') {
                     setMode(m.mode);
@@ -1023,7 +1000,8 @@
             }
         });
         
-        setInterval(()=>{ if(state.role==='host' && state.playing) send({type:'tick',pos:videoEl.currentTime,t:performance.now()}); }, 450);
+        // Fix #3 Cont: Removing the noisy 'tick' interval. It's no longer needed.
+        // setInterval(()=>{ if(state.role==='host' && state.playing) send({type:'tick',pos:videoEl.currentTime,t:performance.now()}); }, 450);
 
         btnPlay.onclick=hostPlayPause;
         document.getElementById('btnSeekBack').onclick=()=> hostSeek(-10);
@@ -1074,8 +1052,8 @@
             if(btnCamNew) btnCamNew.setAttribute('aria-pressed', on);
             if (mediaState.camStream) mediaState.camStream.getVideoTracks().forEach(t => t.enabled = on);
             const stream = on ? mediaState.camStream : null;
-            camPreview.srcObject = stream; hostVideoEl.srcObject = stream; pipVideoEl.srcObject = stream;
-            if(stream) { camPreview.play().catch(e=>e); hostVideoEl.play().catch(e=>e); pipVideoEl.play().catch(e=>e); }
+            camPreview.srcObject = stream; hostVideoEl.srcObject = stream; // pipVideoEl gets stream in renderCinema
+            if(stream) { camPreview.play().catch(e=>e); hostVideoEl.play().catch(e=>e); }
             renderLayout();
         }
 
@@ -1158,6 +1136,21 @@
         const USE_SIGNALING = firebaseConfig.apiKey && firebaseConfig.databaseURL; if (USE_SIGNALING) { fbApp = firebase.initializeApp(firebaseConfig); fbDb = firebase.database(); } else { console.warn("Firebase config is missing. Real 'Go Live' will not work."); }
         testModeCheck.onchange = () => { state.isTesting = testModeCheck.checked; };
 
+        // Fix #1: Added TURN servers for connection reliability
+        const iceServers = [
+            { urls: 'stun:stun.l.google.com:19302' },
+            {
+                urls: 'turn:openrelay.metered.ca:80',
+                username: 'openrelayproject',
+                credential: 'openrelayproject'
+            },
+            {
+                urls: 'turn:openrelay.metered.ca:443',
+                username: 'openrelayproject',
+                credential: 'openrelayproject'
+            }
+        ];
+
         async function handleGoLiveClick() {
             if (state.isTesting) {
                 btnGoLive.textContent = '✓ Testing'; btnGoLive.style.background = 'var(--cyan)'; btnGoLive.style.color = 'var(--bg)'; btnGoLive.style.fontWeight = '700'; btnGoLive.disabled = true; document.querySelector('.toggle-group').style.display = 'none'; showToast("Test Mode started. Highlight products to see the preview.");
@@ -1166,7 +1159,7 @@
             if (!USE_SIGNALING) { showToast("Firebase is not configured. Cannot go live."); return; }
             await initPermissions();
             btnGoLive.disabled = true; btnGoLive.textContent = 'Creating Room...';
-            pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+            pc = new RTCPeerConnection({ iceServers: iceServers }); // <-- Using new reliable config
             setupPeerConnection(pc);
             pc.onnegotiationneeded = async () => { try { const offerDescription = await pc.createOffer(); await pc.setLocalDescription(offerDescription); await roomRef.child('offer').set({ sdp: offerDescription.sdp, type: offerDescription.type }); } catch (err) { console.error("Host: Error during negotiation:", err); } };
             roomRef = fbDb.ref('rooms').push(); state.roomId = roomRef.key;
@@ -1183,7 +1176,17 @@
         function setupPeerConnection(peerConnection) {
             peerConnection.oniceconnectionstatechange = () => console.log(`[${state.role}] ICE State: ${peerConnection.iceConnectionState}`);
             peerConnection.onsignalingstatechange = () => console.log(`[${state.role}] Signaling State: ${peerConnection.signalingState}`);
-            peerConnection.ontrack = (event) => { if (event.streams && event.streams[0]) remoteVideoEl.srcObject = event.streams[0]; };
+            
+            // Fix #2 Cont: This is the robust way to handle an incoming video stream
+            peerConnection.ontrack = (event) => {
+                console.log(`[${state.role}] ONTRACK event fired! A remote stream has arrived.`);
+                if (event.streams && event.streams[0]) {
+                    state.remoteStream = event.streams[0]; // Save the stream to state
+                    remoteVideoEl.srcObject = state.remoteStream; // Assign it immediately
+                    renderLayout(); // Re-render the UI to ensure it's displayed correctly
+                }
+            };
+            
             peerConnection.onconnectionstatechange = () => {
               if (peerConnection.connectionState === 'connected') {
                   if (state.role === 'host') {
@@ -1191,7 +1194,7 @@
                       send({ type: 'state_update', mode: state.mode, layout: state.layout, replaceHost: state.replaceHost, hostPiP: state.hostPiP, video: { isPlaying: state.playing, currentTime: videoEl.currentTime, film: state.film, t: performance.now() } });
                   } else { showToast("Connected to host!"); }
               } else if (['disconnected', 'closed', 'failed'].includes(peerConnection.connectionState)) {
-                  if (state.role === 'host') { showToast("Guest has disconnected."); autoSetLayout('host'); }
+                  if (state.role === 'host') { showToast("Guest has disconnected."); autoSetLayout('host'); state.remoteStream = null; }
                   else { showToast("Disconnected from host."); }
               }
               renderLayout();
@@ -1203,7 +1206,7 @@
             roomRef = fbDb.ref(`rooms/${roomId}`);
             const snapshot = await roomRef.once('value');
             if (!snapshot.exists()) { showToast("Room does not exist!"); return; }
-            pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+            pc = new RTCPeerConnection({ iceServers: iceServers }); // <-- Using new reliable config
             setupPeerConnection(pc);
             if (mediaState.micStream) mediaState.micStream.getTracks().forEach(track => pc.addTrack(track, mediaState.micStream));
             if (mediaState.camStream) mediaState.camStream.getTracks().forEach(track => pc.addTrack(track, mediaState.camStream));

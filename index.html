@@ -365,6 +365,37 @@
       border-color: var(--accent);
       animation: pulse-accent-glow 2.5s infinite;
     }
+    
+    #guestReadyOverlay {
+      position: absolute;
+      inset: 0;
+      z-index: 50;
+      background: rgba(11, 12, 19, 0.85);
+      backdrop-filter: blur(8px);
+      color: white;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      cursor: pointer;
+      transition: opacity .3s ease;
+    }
+    #guestReadyOverlay svg {
+        width: 80px;
+        height: 80px;
+        fill: white;
+        margin-bottom: 12px;
+    }
+    #guestReadyOverlay h2 {
+        margin: 0 0 8px;
+    }
+    #guestReadyOverlay p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 15px;
+    }
+
   </style>
 </head>
 
@@ -394,6 +425,12 @@
   <main>
     <section class="shell">
       <div class="canvas" id="canvas">
+        <div id="guestReadyOverlay" style="display: none;">
+            <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"></path></svg>
+            <h2>Click to Join Session</h2>
+            <p>Your video will be synchronized with the host.</p>
+        </div>
+        
         <div class="stage" id="stageStudio"></div>
         <div class="stage" id="stageCinema"></div>
         <div class="product-spotlight" id="productSpotlight"></div>
@@ -596,7 +633,8 @@
           mode:'studio', role:'host', filmLoaded:false, playing:false, layout:'host', film:null, replaceHost:false, hostPiP:true,
           roomId: new URL(location.href).searchParams.get("room") || null,
           liveCollection: {}, isTesting: false, chatOverlayVisible: true,
-          remoteStream: null, // <-- Fix #2: Added to reliably store the guest's video stream
+          remoteStream: null,
+          hostVideoPrimed: false, // Flag to ensure host video is ready for autoplay
         };
 
         function setMode(newMode){
@@ -619,11 +657,9 @@
 
         const bus = new EventTarget();
         function send(m){
-            // Only the host sends messages to Firebase
             if (roomRef && state.role === 'host') {
                 roomRef.child('messages').push(m);
             }
-            // The host no longer dispatches the event locally.
         }
         function onMsg(fn){ bus.addEventListener('m', e=> fn(e.detail)); }
 
@@ -636,26 +672,20 @@
             if(!v) return;
             input.value='';
             const m = {type:'chat', user:state.role, ts:Date.now(), text:v};
-            addChat(log, m);
-            send(m);
+            // Chat messages are sent directly to Firebase by the host
+            if (roomRef && state.role === 'host') {
+                roomRef.child('messages').push(m);
+            } else if (roomRef) {
+                // Guests also need to be able to send chat messages
+                roomRef.child('messages').push(m);
+            }
+            // For the sender, add the chat locally immediately.
+            bus.dispatchEvent(new CustomEvent('chat-message', { detail: m }));
           };
           btn.onclick = sendMessage;
-          input.onkeydown = (e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault();
-              sendMessage();
-            }
-          };
-          
-          const chatCard = input.closest('.chat-card');
-          if (chatCard) {
-            const emojiBar = chatCard.querySelector('.emoji-bar');
-            if (emojiBar) {
-              emojiBar.querySelectorAll('.emoji-btn').forEach(btn => {
-                btn.onclick = () => { input.value += btn.textContent; input.focus(); };
-              });
-            }
-          }
+          input.onkeydown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } };
+          const emojiBar = input.closest('.chat-card')?.querySelector('.emoji-bar');
+          if (emojiBar) { emojiBar.querySelectorAll('.emoji-btn').forEach(btn => { btn.onclick = () => { input.value += btn.textContent; input.focus(); }; }); }
         }
 
         function addChat(log, m){ const row=document.createElement('div'); row.innerHTML = `<span style="opacity:.7">${new Date(m.ts).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span> <strong>${m.user}:</strong> ${escapeHtml(m.text)}`; log.appendChild(row); log.scrollTop=log.scrollHeight; }
@@ -672,14 +702,11 @@
         function renderStudio(){
           clearStage(stageStudio);
           const guestIsVisible = pc?.connectionState === 'connected';
-          
           const localTile = makeTile('', state.role === 'host' ? 'Host' : 'You');
           localTile.appendChild(hostVideoEl);
           const remoteTile = makeTile('', state.role === 'host' ? 'Guest' : 'Host');
-          // Fix #2 Cont: Always re-assign the stream from state when rendering
           if (state.remoteStream) remoteVideoEl.srcObject = state.remoteStream;
           remoteTile.appendChild(remoteVideoEl);
-          
           if (state.layout === 'host') {
               localTile.className = 'tile span-12';
               stageStudio.appendChild(localTile);
@@ -688,11 +715,8 @@
               remoteTile.className = 'tile span-6';
               if(state.role === 'host') {
                 stageStudio.appendChild(localTile);
-                if(guestIsVisible) {
-                    stageStudio.appendChild(remoteTile);
-                } else {
-                    stageStudio.appendChild(makeTile('span-6', 'Guest Slot'));
-                }
+                if(guestIsVisible) stageStudio.appendChild(remoteTile);
+                else stageStudio.appendChild(makeTile('span-6', 'Guest Slot'));
               } else {
                 stageStudio.appendChild(remoteTile);
                 stageStudio.appendChild(localTile);
@@ -701,38 +725,23 @@
               localTile.className = 'tile span-6';
               remoteTile.className = 'tile span-6';
               stageStudio.appendChild(localTile);
-              if(guestIsVisible) {
-                  stageStudio.appendChild(remoteTile);
-              } else {
-                  stageStudio.appendChild(makeTile('span-6', 'Guest Slot'));
-              }
+              if(guestIsVisible) stageStudio.appendChild(remoteTile);
+              else stageStudio.appendChild(makeTile('span-6', 'Guest Slot'));
               stageStudio.appendChild(makeTile('span-6', ''));
               stageStudio.appendChild(makeTile('span-6', ''));
           } else if (state.layout === '3x3') {
               localTile.className = 'tile span-4';
               remoteTile.className = 'tile span-4';
               stageStudio.appendChild(localTile);
-              if(guestIsVisible) {
-                  stageStudio.appendChild(remoteTile);
-              } else {
-                  stageStudio.appendChild(makeTile('span-4', 'Guest Slot'));
-              }
-              for(let i=0; i<7; i++) {
-                  stageStudio.appendChild(makeTile('span-4', ''));
-              }
+              if(guestIsVisible) stageStudio.appendChild(remoteTile);
+              else stageStudio.appendChild(makeTile('span-4', 'Guest Slot'));
+              for(let i=0; i<7; i++) stageStudio.appendChild(makeTile('span-4', ''));
           }
-          
           hostVideoEl.play().catch(e => console.warn("Host re-play failed", e));
           remoteVideoEl.play().catch(e => console.warn("Remote re-play failed", e));
         }
         
-        const videoEl = document.createElement('video'); videoEl.id='partyVideo'; videoEl.setAttribute('playsinline',''); videoEl.setAttribute('webkit-playsinline',''); videoEl.crossOrigin = "anonymous";
-        if (new URL(location.href).searchParams.get("room")) {
-          videoEl.style.pointerEvents = 'none';
-          videoEl.controls = false;
-        } else {
-          videoEl.controls = false;
-        }
+        const videoEl = document.createElement('video'); videoEl.id='partyVideo'; videoEl.setAttribute('playsinline',''); videoEl.setAttribute('webkit-playsinline',''); videoEl.crossOrigin = "anonymous"; videoEl.controls=false;
 
         const pipVideoEl = document.createElement('video'); pipVideoEl.setAttribute('playsinline', ''); pipVideoEl.setAttribute('autoplay', ''); pipVideoEl.setAttribute('muted', ''); pipVideoEl.style.cssText = 'width:100%; height:100%; object-fit:cover; border-radius: 4px; transform: scaleX(-1);';
         const hostPiP = document.createElement('div'); hostPiP.className = 'pip';
@@ -742,17 +751,12 @@
             const guestIsVisible = pc?.connectionState === 'connected';
             const pipStream = (state.role === 'host') ? mediaState.camStream : state.remoteStream;
             if(pipStream) pipVideoEl.srcObject = pipStream;
-            
             pipVideoEl.play().catch(e => console.warn("PiP play failed", e));
             hostPiP.innerHTML = '';
             hostPiP.appendChild(pipVideoEl);
-
             const hostTile = makeTile('', 'Host');
             const guestTile = makeTile('', 'Guest');
-            
-            // Fix #2 Cont: Ensure the correct stream (local vs remote) is assigned
             const remoteStreamForLayout = state.remoteStream;
-
             if(state.role === 'host') {
                 hostTile.appendChild(hostVideoEl);
                 if(remoteStreamForLayout) guestTile.appendChild(remoteVideoEl);
@@ -760,10 +764,8 @@
                 if(remoteStreamForLayout) hostTile.appendChild(remoteVideoEl);
                 guestTile.appendChild(hostVideoEl);
             }
-            
             const filmTile = makeTile('', 'Film');
             filmTile.appendChild(videoEl);
-
             if (state.replaceHost) {
                 if (state.hostPiP && hostPiP.parentElement !== filmTile) filmTile.appendChild(hostPiP);
                 switch (state.layout) {
@@ -864,7 +866,7 @@
 
         btnResync.onclick = () => {
           if (state.role === 'host' && state.filmLoaded) {
-            send({ type: 'force_sync', pos: videoEl.currentTime, t: performance.now(), isPlaying: state.playing });
+            send({ type: 'force_sync', pos: videoEl.currentTime, t: firebase.database.ServerValue.TIMESTAMP, isPlaying: state.playing });
             showToast("Resync signal sent to all guests.");
           }
         };
@@ -898,8 +900,8 @@
                 filmThumb.style.backgroundImage=`url('${f.thumb}')`;
                 filmThumb.classList.add('is-ready');
                 state.filmLoaded=true;
-                
                 state.playing = false;
+                state.hostVideoPrimed = false; // Reset priming flag for new film
                 mediaState.outputAudioSetup = false;
                 stopOutputMeter();
                 if (btnPlay) {
@@ -907,7 +909,6 @@
                     btnPlay.classList.remove('is-playing');
                     btnPlay.classList.add('prompt-glow');
                 }
-                
                 if(syncStateEl) syncStateEl.textContent='Ready';
                 renderLayout();
                 send({ type: 'film_selected', film: { id: f.id, url: f.url, thumb: f.thumb, title: f.title } });
@@ -924,9 +925,9 @@
                 videoEl.addEventListener('loadedmetadata', resolve, { once: true });
             });
         }
-        
+
         function hostSeek(delta){ if(!state.filmLoaded) return; videoEl.currentTime=Math.max(0, videoEl.currentTime+delta); send({type:'seek', pos:videoEl.currentTime, t:firebase.database.ServerValue.TIMESTAMP}); }
-                
+        
         function sendStateUpdate() {
             if (state.role === 'host') send({ type: 'state_update', mode: state.mode, layout: state.layout, replaceHost: state.replaceHost, hostPiP: state.hostPiP });
         }
@@ -934,54 +935,68 @@
         function hostPlayPause() {
             if (!state.filmLoaded || state.role !== 'host') return;
 
-            // Based on the CURRENT state, send the INVERSE command.
-            // The onMsg handler will perform the actual state change for everyone.
-            if (state.playing) {
-                // If it is currently playing, we intend to pause it.
-                send({ type: 'pause', pos: videoEl.currentTime, t: firebase.database.ServerValue.TIMESTAMP });
+            if (!state.hostVideoPrimed) {
+                videoEl.muted = true;
+                videoEl.play().then(() => {
+                    videoEl.pause();
+                    videoEl.muted = false;
+                    state.hostVideoPrimed = true;
+                    sendPlayCommand();
+                }).catch(() => {
+                    // This fallback handles cases where even a muted play is blocked
+                    videoEl.muted = false;
+                    state.hostVideoPrimed = true;
+                    sendPlayCommand();
+                });
             } else {
-                // If it is currently paused, we intend to play it.
-                send({ type: 'play', pos: videoEl.currentTime, t: firebase.database.ServerValue.TIMESTAMP });
+                sendPlayCommand();
+            }
+            
+            function sendPlayCommand() {
+                if (state.playing) {
+                    send({ type: 'pause', pos: videoEl.currentTime, t: firebase.database.ServerValue.TIMESTAMP });
+                } else {
+                    send({ type: 'play', pos: videoEl.currentTime, t: firebase.database.ServerValue.TIMESTAMP });
+                }
             }
         }
 
         onMsg(m => {
             if (m.type === 'chat') {
-                [chatLogStudio, chatLogCinema, chatLogShop].forEach(log => addChat(log, m));
-                showOverlayMessage(m);
+                bus.dispatchEvent(new CustomEvent('chat-message', { detail: m }));
                 return;
             }
 
-            // This logic now applies to EVERYONE, including the host, ensuring perfect sync.
-            if (m.type === 'play' || m.type === 'seek' || m.type === 'pause' || m.type === 'force_sync') {
-                // 'm.t' is now the MASTER server timestamp
-                const timeSinceEvent = Date.now() - m.t; // Time elapsed since the event occurred
-                const targetTime = m.pos + (timeSinceEvent / 1000); // Add elapsed time to get the true current position
+            if (m.type === 'guest_ready' && state.role === 'host') {
+                showToast("Guest is ready! Synchronizing...");
+                send({ type: 'force_sync', pos: videoEl.currentTime, t: firebase.database.ServerValue.TIMESTAMP, isPlaying: state.playing });
+                sendStateUpdate();
+                return;
+            }
 
-                videoEl.currentTime = targetTime; // Hard seek to the calculated time
+            if (m.type === 'play' || m.type === 'seek' || m.type === 'pause' || m.type === 'force_sync') {
+                const timeSinceEvent = Date.now() - m.t;
+                const targetTime = m.pos + (timeSinceEvent / 1000);
+                videoEl.currentTime = targetTime;
                 if(syncStateEl) syncStateEl.textContent = 'OK';
                 videoEl.playbackRate = 1;
-
                 const shouldBePlaying = (m.type === 'play') || (m.type === 'force_sync' && m.isPlaying);
-                
                 if (shouldBePlaying) {
-                    // Check if video is ready to play
-                    ensureFilmReady().then(() => videoEl.play()).catch(() => {
-                        showOverlayMessage({ user: 'System', text: "Tap the film to start playback." });
+                    ensureFilmReady().then(() => videoEl.play()).catch((e) => {
+                        console.warn("Playback failed:", e);
+                        // The guest overlay handles this for guests. This is a fallback.
+                        showOverlayMessage({ user: 'System', text: "Tap screen to start playback." });
                     });
                     if(!mediaState.outputAudioSetup) setupOutputAudioProcessing();
                 } else {
                     videoEl.pause();
                 }
-                
-                // Update playing state and UI for everyone based on the message
                 state.playing = shouldBePlaying;
                 btnPlay.textContent = state.playing ? 'Pause' : 'Play';
                 btnPlay.classList.toggle('is-playing', state.playing);
                 renderLayout();
             }
             
-            // Guest-specific logic for state updates that don't involve playback
             if(state.role === 'guest') {
                 if(m.type === 'film_selected') { loadFilm(m.film); }
                 if(m.type === 'state_update') {
@@ -997,8 +1012,10 @@
             }
         });
         
-        // Fix #3 Cont: Removing the noisy 'tick' interval. It's no longer needed.
-        // setInterval(()=>{ if(state.role==='host' && state.playing) send({type:'tick',pos:videoEl.currentTime,t:performance.now()}); }, 450);
+        bus.addEventListener('chat-message', (e) => {
+            [chatLogStudio, chatLogCinema, chatLogShop].forEach(log => addChat(log, e.detail));
+            showOverlayMessage(e.detail);
+        });
 
         btnPlay.onclick=hostPlayPause;
         document.getElementById('btnSeekBack').onclick=()=> hostSeek(-10);
@@ -1049,7 +1066,7 @@
             if(btnCamNew) btnCamNew.setAttribute('aria-pressed', on);
             if (mediaState.camStream) mediaState.camStream.getVideoTracks().forEach(t => t.enabled = on);
             const stream = on ? mediaState.camStream : null;
-            camPreview.srcObject = stream; hostVideoEl.srcObject = stream; // pipVideoEl gets stream in renderCinema
+            camPreview.srcObject = stream; hostVideoEl.srcObject = stream;
             if(stream) { camPreview.play().catch(e=>e); hostVideoEl.play().catch(e=>e); }
             renderLayout();
         }
@@ -1133,19 +1150,10 @@
         const USE_SIGNALING = firebaseConfig.apiKey && firebaseConfig.databaseURL; if (USE_SIGNALING) { fbApp = firebase.initializeApp(firebaseConfig); fbDb = firebase.database(); } else { console.warn("Firebase config is missing. Real 'Go Live' will not work."); }
         testModeCheck.onchange = () => { state.isTesting = testModeCheck.checked; };
 
-        // Fix #1: Added TURN servers for connection reliability
         const iceServers = [
             { urls: 'stun:stun.l.google.com:19302' },
-            {
-                urls: 'turn:openrelay.metered.ca:80',
-                username: 'openrelayproject',
-                credential: 'openrelayproject'
-            },
-            {
-                urls: 'turn:openrelay.metered.ca:443',
-                username: 'openrelayproject',
-                credential: 'openrelayproject'
-            }
+            { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
+            { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' }
         ];
 
         async function handleGoLiveClick() {
@@ -1156,7 +1164,7 @@
             if (!USE_SIGNALING) { showToast("Firebase is not configured. Cannot go live."); return; }
             await initPermissions();
             btnGoLive.disabled = true; btnGoLive.textContent = 'Creating Room...';
-            pc = new RTCPeerConnection({ iceServers: iceServers }); // <-- Using new reliable config
+            pc = new RTCPeerConnection({ iceServers: iceServers });
             setupPeerConnection(pc);
             pc.onnegotiationneeded = async () => { try { const offerDescription = await pc.createOffer(); await pc.setLocalDescription(offerDescription); await roomRef.child('offer').set({ sdp: offerDescription.sdp, type: offerDescription.type }); } catch (err) { console.error("Host: Error during negotiation:", err); } };
             roomRef = fbDb.ref('rooms').push(); state.roomId = roomRef.key;
@@ -1173,23 +1181,20 @@
         function setupPeerConnection(peerConnection) {
             peerConnection.oniceconnectionstatechange = () => console.log(`[${state.role}] ICE State: ${peerConnection.iceConnectionState}`);
             peerConnection.onsignalingstatechange = () => console.log(`[${state.role}] Signaling State: ${peerConnection.signalingState}`);
-            
-            // Fix #2 Cont: This is the robust way to handle an incoming video stream
             peerConnection.ontrack = (event) => {
-                console.log(`[${state.role}] ONTRACK event fired! A remote stream has arrived.`);
                 if (event.streams && event.streams[0]) {
-                    state.remoteStream = event.streams[0]; // Save the stream to state
-                    remoteVideoEl.srcObject = state.remoteStream; // Assign it immediately
-                    renderLayout(); // Re-render the UI to ensure it's displayed correctly
+                    state.remoteStream = event.streams[0];
+                    remoteVideoEl.srcObject = state.remoteStream;
+                    renderLayout();
                 }
             };
-            
             peerConnection.onconnectionstatechange = () => {
               if (peerConnection.connectionState === 'connected') {
                   if (state.role === 'host') {
-                      showToast("Guest has connected!");
-                      send({ type: 'state_update', mode: state.mode, layout: state.layout, replaceHost: state.replaceHost, hostPiP: state.hostPiP, video: { isPlaying: state.playing, currentTime: videoEl.currentTime, film: state.film, t: performance.now() } });
-                  } else { showToast("Connected to host!"); }
+                      showToast("Guest has connected! Waiting for them to be ready...");
+                  } else {
+                      showToast("Connected to host! Click to join the session.");
+                  }
               } else if (['disconnected', 'closed', 'failed'].includes(peerConnection.connectionState)) {
                   if (state.role === 'host') { showToast("Guest has disconnected."); autoSetLayout('host'); state.remoteStream = null; }
                   else { showToast("Disconnected from host."); }
@@ -1203,7 +1208,7 @@
             roomRef = fbDb.ref(`rooms/${roomId}`);
             const snapshot = await roomRef.once('value');
             if (!snapshot.exists()) { showToast("Room does not exist!"); return; }
-            pc = new RTCPeerConnection({ iceServers: iceServers }); // <-- Using new reliable config
+            pc = new RTCPeerConnection({ iceServers: iceServers });
             setupPeerConnection(pc);
             if (mediaState.micStream) mediaState.micStream.getTracks().forEach(track => pc.addTrack(track, mediaState.micStream));
             if (mediaState.camStream) mediaState.camStream.getTracks().forEach(track => pc.addTrack(track, mediaState.camStream));
@@ -1214,6 +1219,16 @@
             pc.onicecandidate = e => { if (e.candidate) roomRef.child('answerCandidates').push(e.candidate.toJSON()); };
             roomIdLabel.textContent = roomId; roomPill.style.display = 'inline-flex';
             btnGoLive.disabled = true; btnGoLive.textContent = "Joined";
+            
+            const guestOverlay = document.getElementById('guestReadyOverlay');
+            guestOverlay.style.display = 'flex';
+            guestOverlay.onclick = () => {
+                videoEl.play().then(() => videoEl.pause());
+                remoteVideoEl.play().then(() => remoteVideoEl.pause());
+                guestOverlay.style.display = 'none';
+                showToast("You're connected and ready!");
+                if (roomRef) roomRef.child('messages').push({ type: 'guest_ready' });
+            };
         }
 
         btnGoLive.onclick = handleGoLiveClick;
@@ -1247,7 +1262,13 @@
             renderLayout(); loadFilm(films[0]); makeCardsCollapsible();
             if (state.role === 'host') { renderHostCatalog(); renderLiveCollection(); }
             document.querySelectorAll('.chat-overlay-toggle-input').forEach(t => { t.checked = state.chatOverlayVisible; t.addEventListener('change', handleChatOverlayToggle); });
-            if (state.roomId) { fbDb.ref(`rooms/${state.roomId}/messages`).on('child_added', s => { if (s.val()) bus.dispatchEvent(new CustomEvent('m',{detail:s.val()})); }); }
+            if (state.roomId) {
+                const messagesRef = fbDb.ref(`rooms/${state.roomId}/messages`);
+                messagesRef.on('child_added', s => {
+                    const message = s.val();
+                    if (message) bus.dispatchEvent(new CustomEvent('m',{detail:message}));
+                });
+            }
           } catch (err) { console.error("Initialization failed:", err); showToast("A critical error occurred."); }
         })();
         navigator.mediaDevices.addEventListener('devicechange', getDevices);

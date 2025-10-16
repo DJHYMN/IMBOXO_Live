@@ -384,7 +384,7 @@
     <div class="toggle-group only-host">
       <label for="testModeCheck">Test Mode</label>
       <label class="switch">
-        <input type="checkbox" id="testModeCheck" checked>
+          <input type="checkbox" id="testModeCheck">
         <span class="slider"></span>
       </label>
     </div>
@@ -595,7 +595,7 @@
         const state = {
           mode:'studio', role:'host', filmLoaded:false, playing:false, layout:'host', film:null, replaceHost:false, hostPiP:true,
           roomId: new URL(location.href).searchParams.get("room") || null,
-          liveCollection: {}, isTesting: true, chatOverlayVisible: true,
+          liveCollection: {}, isTesting: false, chatOverlayVisible: true,
         };
 
         function setMode(newMode){
@@ -925,6 +925,18 @@
               videoEl.playbackRate = 1;
             }
         }
+
+        function ensureFilmReady() {
+            return new Promise(resolve => {
+                if (videoEl.readyState >= 1) return resolve();
+                const onReady = () => {
+                    videoEl.removeEventListener('loadedmetadata', onReady);
+                    resolve();
+                };
+                videoEl.addEventListener('loadedmetadata', onReady, { once: true });
+            });
+        }
+
         
         function hostSeek(delta){ if(!state.filmLoaded) return; videoEl.currentTime=Math.max(0, videoEl.currentTime+delta); send({type:'seek',pos:videoEl.currentTime,t:performance.now()}); }
         
@@ -962,19 +974,28 @@
             if(state.role === 'guest') {
                 if(m.type==='play' || m.type==='seek' || m.type==='pause' || m.type==='force_sync'){
                     const targetTime = m.pos + (performance.now() - m.t) / 1000;
-                    videoEl.currentTime = targetTime;
+                    const drift = targetTime - videoEl.currentTime;
+
+                    if (Math.abs(drift) > 1.5) {
+                        videoEl.currentTime = targetTime;
+                        videoEl.playbackRate = 1;
+                    } else {
+                        gentlySeekTo(targetTime);
+                    }
+
                     const shouldBePlaying = (m.type === 'play') || (m.type === 'force_sync' && m.isPlaying);
                     if (shouldBePlaying) {
-                        if (videoEl.muted) videoEl.muted = false;
-                        videoEl.play().catch(e => {
-                            console.warn("Guest play failed, likely autoplay", e);
-                            showOverlayMessage({user: 'System', text: "Tap the film to unmute and start playback."});
+                        ensureFilmReady().then(() => videoEl.play()).catch(() => {
+                            showOverlayMessage({ user: 'System', text: "Tap the film to start playback." });
                         });
                         if(!mediaState.outputAudioSetup) setupOutputAudioProcessing();
                     } else {
                         videoEl.pause();
                     }
+                    renderLayout();
                 }
+            }
+
                 
                 if(m.type==='tick'){ gentlySeekTo(m.pos + (performance.now()-m.t)/1000); }
                 if(m.type === 'film_selected') { loadFilm(m.film); }
@@ -1002,7 +1023,7 @@
             }
         });
         
-        setInterval(()=>{ if(state.role==='host' && state.playing) send({type:'tick',pos:videoEl.currentTime,t:performance.now()}); }, 1500);
+        setInterval(()=>{ if(state.role==='host' && state.playing) send({type:'tick',pos:videoEl.currentTime,t:performance.now()}); }, 450);
 
         btnPlay.onclick=hostPlayPause;
         document.getElementById('btnSeekBack').onclick=()=> hostSeek(-10);
@@ -1201,13 +1222,16 @@
         btnRecord.onclick = () => { if (mediaState.recording) stopRecording(); else startRecording(); };
         function startRecording() {
           if (!mediaState.camStream || !mediaState.micStream) { showToast("Camera and mic must be on to record."); return; }
-          const tracks = [...mediaState.camStream.getTracks(), ...mediaState.micStream.getTracks()]; if(remoteVideoEl.srcObject) tracks.push(...remoteVideoEl.srcObject.getAudioTracks());
+          const tracks = [...mediaState.camStream.getTracks(), ...mediaState.micStream.getTracks()];
+          if (remoteVideoEl.srcObject) tracks.push(...remoteVideoEl.srcObject.getAudioTracks());
           const streamToRecord = new MediaStream(tracks);
-          mediaState.recorder = new MediaRecorder(streamToRecord, { mimeType: 'video/webm' }); const chunks = [];
+          mediaState.recorder = new MediaRecorder(streamToRecord, { mimeType: 'video/webm' });
+          const chunks = [];
           mediaState.recorder.ondataavailable = e => chunks.push(e.data);
           mediaState.recorder.onstop = () => { const blob = new Blob(chunks, { type: 'video/webm' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `imboxo-live-${new Date().toISOString()}.webm`; a.click(); URL.revokeObjectURL(a.href); };
           mediaState.recorder.start(); mediaState.recording = true; btnRecord.setAttribute('aria-pressed', true); showToast("Recording started.");
         }
+
         function stopRecording() { if (mediaState.recorder) mediaState.recorder.stop(); mediaState.recording = false; btnRecord.setAttribute('aria-pressed', false); showToast("Recording stopped. Download will start."); }
         
         document.getElementById('btnEndNew').onclick = () => { endModal.classList.add('open'); document.getElementById('btnEndForAll').style.display = state.role === 'host' ? 'block' : 'none'; }

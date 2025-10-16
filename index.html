@@ -590,7 +590,6 @@
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 
   <script>
-    // --- THIS WRAPPER IS THE CORE FIX ---
     document.addEventListener('DOMContentLoaded', () => {
 
         const state = {
@@ -664,184 +663,136 @@
         const remoteVideoEl = document.createElement('video'); remoteVideoEl.id = 'remote-video'; remoteVideoEl.setAttribute('playsinline', ''); remoteVideoEl.setAttribute('autoplay', '');
         
         function renderStudio(){
-                  clearStage(stageStudio);
-                  const guestIsVisible = pc?.connectionState === 'connected';
-                  
-                  const localTile = makeTile('', state.role === 'host' ? 'Host' : 'You');
-                  localTile.appendChild(hostVideoEl);
-                  const remoteTile = makeTile('', state.role === 'host' ? 'Guest' : 'Host');
-                  remoteTile.appendChild(remoteVideoEl);
-                  
-                  if (state.layout === 'host') {
-                      localTile.className = 'tile span-12';
-                      stageStudio.appendChild(localTile);
-                  } else if (state.layout === 'split') {
-                      localTile.className = 'tile span-6';
-                      remoteTile.className = 'tile span-6';
-                      if(state.role === 'host') {
-                        stageStudio.appendChild(localTile);
-                        // ✨ FIX: Add guest tile or a placeholder
-                        if(guestIsVisible) {
-                            stageStudio.appendChild(remoteTile);
-                        } else {
-                            stageStudio.appendChild(makeTile('span-6', 'Guest Slot'));
-                        }
-                      } else {
-                        stageStudio.appendChild(remoteTile); // Host is remote
-                        stageStudio.appendChild(localTile); // Guest is local
-                      }
-                  } else if (state.layout === '2x2') {
-                      localTile.className = 'tile span-6';
-                      remoteTile.className = 'tile span-6';
-                      stageStudio.appendChild(localTile);
-                      // ✨ FIX: Add guest tile or a placeholder
-                      if(guestIsVisible) {
-                          stageStudio.appendChild(remoteTile);
-                      } else {
-                          stageStudio.appendChild(makeTile('span-6', 'Guest Slot'));
-                      }
-                      // ✨ FIX: Add the remaining 2 placeholders to guarantee a 4-cell grid
-                      stageStudio.appendChild(makeTile('span-6', ''));
-                      stageStudio.appendChild(makeTile('span-6', ''));
-                  } else if (state.layout === '3x3') {
-                      localTile.className = 'tile span-4';
-                      remoteTile.className = 'tile span-4';
-                      stageStudio.appendChild(localTile);
-                      // ✨ FIX: Add guest tile or a placeholder
-                      if(guestIsVisible) {
-                          stageStudio.appendChild(remoteTile);
-                      } else {
-                          stageStudio.appendChild(makeTile('span-4', 'Guest Slot'));
-                      }
-                      // ✨ FIX: Add the remaining 7 placeholders to guarantee a 9-cell grid
-                      for(let i=0; i<7; i++) {
-                          stageStudio.appendChild(makeTile('span-4', ''));
-                      }
-                  }
-                  
-                  hostVideoEl.play().catch(e => console.warn("Host re-play failed", e));
-                  remoteVideoEl.play().catch(e => console.warn("Remote re-play failed", e));
+          clearStage(stageStudio);
+          const guestIsVisible = pc?.connectionState === 'connected';
+          
+          const localTile = makeTile('', state.role === 'host' ? 'Host' : 'You');
+          localTile.appendChild(hostVideoEl);
+          const remoteTile = makeTile('', state.role === 'host' ? 'Guest' : 'Host');
+          remoteTile.appendChild(remoteVideoEl);
+          
+          if (state.layout === 'host') {
+              localTile.className = 'tile span-12';
+              stageStudio.appendChild(localTile);
+          } else if (state.layout === 'split') {
+              localTile.className = 'tile span-6';
+              remoteTile.className = 'tile span-6';
+              if(state.role === 'host') {
+                stageStudio.appendChild(localTile);
+                if(guestIsVisible) {
+                    stageStudio.appendChild(remoteTile);
+                } else {
+                    stageStudio.appendChild(makeTile('span-6', 'Guest Slot'));
                 }
+              } else {
+                stageStudio.appendChild(remoteTile);
+                stageStudio.appendChild(localTile);
+              }
+          } else if (state.layout === '2x2') {
+              localTile.className = 'tile span-6';
+              remoteTile.className = 'tile span-6';
+              stageStudio.appendChild(localTile);
+              if(guestIsVisible) {
+                  stageStudio.appendChild(remoteTile);
+              } else {
+                  stageStudio.appendChild(makeTile('span-6', 'Guest Slot'));
+              }
+              stageStudio.appendChild(makeTile('span-6', ''));
+              stageStudio.appendChild(makeTile('span-6', ''));
+          } else if (state.layout === '3x3') {
+              localTile.className = 'tile span-4';
+              remoteTile.className = 'tile span-4';
+              stageStudio.appendChild(localTile);
+              if(guestIsVisible) {
+                  stageStudio.appendChild(remoteTile);
+              } else {
+                  stageStudio.appendChild(makeTile('span-4', 'Guest Slot'));
+              }
+              for(let i=0; i<7; i++) {
+                  stageStudio.appendChild(makeTile('span-4', ''));
+              }
+          }
+          
+          hostVideoEl.play().catch(e => console.warn("Host re-play failed", e));
+          remoteVideoEl.play().catch(e => console.warn("Remote re-play failed", e));
+        }
         
-        const videoEl = document.createElement('video'); videoEl.id='partyVideo'; videoEl.setAttribute('playsinline',''); videoEl.setAttribute('webkit-playsinline',''); videoEl.crossOrigin = "anonymous"; videoEl.controls=false;
+        const videoEl = document.createElement('video'); videoEl.id='partyVideo'; videoEl.setAttribute('playsinline',''); videoEl.setAttribute('webkit-playsinline',''); videoEl.crossOrigin = "anonymous";
+        if (new URL(location.href).searchParams.get("room")) {
+          videoEl.style.pointerEvents = 'none';
+          videoEl.controls = false;
+        } else {
+          videoEl.controls = false;
+        }
+
         const pipVideoEl = document.createElement('video'); pipVideoEl.setAttribute('playsinline', ''); pipVideoEl.setAttribute('autoplay', ''); pipVideoEl.setAttribute('muted', ''); pipVideoEl.style.cssText = 'width:100%; height:100%; object-fit:cover; border-radius: 4px; transform: scaleX(-1);';
         const hostPiP = document.createElement('div'); hostPiP.className = 'pip';
         
         function renderCinema() {
             clearStage(stageCinema);
             const guestIsVisible = pc?.connectionState === 'connected';
-
-            // --- FINAL FIX: Role-aware PiP ---
             pipVideoEl.srcObject = (state.role === 'host') ? mediaState.camStream : remoteVideoEl.srcObject;
             
             pipVideoEl.play().catch(e => console.warn("PiP play failed", e));
             hostPiP.innerHTML = '';
             hostPiP.appendChild(pipVideoEl);
 
-            const localVideoContainer = hostVideoEl;
-            const remoteVideoContainer = remoteVideoEl;
-
             const hostTile = makeTile('', 'Host');
             const guestTile = makeTile('', 'Guest');
             if(state.role === 'host') {
-                hostTile.appendChild(localVideoContainer);
-                guestTile.appendChild(remoteVideoContainer);
+                hostTile.appendChild(hostVideoEl);
+                guestTile.appendChild(remoteVideoEl);
             } else {
-                hostTile.appendChild(remoteVideoContainer);
-                guestTile.appendChild(localVideoContainer);
+                hostTile.appendChild(remoteVideoEl);
+                guestTile.appendChild(hostVideoEl);
             }
             
             const filmTile = makeTile('', 'Film');
             filmTile.appendChild(videoEl);
 
-            // This is the main logic for when the film replaces the host's main video
             if (state.replaceHost) {
-                if (state.hostPiP && hostPiP.parentElement !== filmTile) {
-                    filmTile.appendChild(hostPiP);
-                }
+                if (state.hostPiP && hostPiP.parentElement !== filmTile) filmTile.appendChild(hostPiP);
                 switch (state.layout) {
-                    case 'host':
-                        filmTile.className = 'tile span-12';
-                        stageCinema.appendChild(filmTile);
-                        break;
+                    case 'host': filmTile.className = 'tile span-12'; stageCinema.appendChild(filmTile); break;
                     case 'split':
-                        filmTile.className = 'tile span-6';
-                        stageCinema.appendChild(filmTile);
-                        if (guestIsVisible) {
-                            guestTile.className = 'tile span-6';
-                            stageCinema.appendChild(guestTile);
-                        } else {
-                            stageCinema.appendChild(makeTile('span-6', 'Guest Slot')); // Placeholder
-                        }
+                        filmTile.className = 'tile span-6'; stageCinema.appendChild(filmTile);
+                        if (guestIsVisible) { guestTile.className = 'tile span-6'; stageCinema.appendChild(guestTile); }
+                        else { stageCinema.appendChild(makeTile('span-6', 'Guest Slot')); }
                         break;
                     case '2x2':
-                        filmTile.className = 'tile span-6';
-                        stageCinema.appendChild(filmTile);
-                        if(guestIsVisible) {
-                            guestTile.className = 'tile span-6';
-                            stageCinema.appendChild(guestTile);
-                        } else {
-                            stageCinema.appendChild(makeTile('span-6', 'Guest Slot')); // Placeholder
-                        }
-                        stageCinema.appendChild(makeTile('span-6', ''));
-                        stageCinema.appendChild(makeTile('span-6', ''));
+                        filmTile.className = 'tile span-6'; stageCinema.appendChild(filmTile);
+                        if(guestIsVisible) { guestTile.className = 'tile span-6'; stageCinema.appendChild(guestTile); }
+                        else { stageCinema.appendChild(makeTile('span-6', 'Guest Slot')); }
+                        stageCinema.appendChild(makeTile('span-6', '')); stageCinema.appendChild(makeTile('span-6', ''));
                         break;
-                    case '3x3': // ✨ NEW LOGIC FOR 3x3
-                        filmTile.className = 'tile span-4'; // Use span-4 for 3 columns
-                        stageCinema.appendChild(filmTile);
-                        if(guestIsVisible) {
-                            guestTile.className = 'tile span-4';
-                            stageCinema.appendChild(guestTile);
-                        } else {
-                            stageCinema.appendChild(makeTile('span-4', 'Guest Slot')); // Placeholder
-                        }
-                        // Add the remaining 7 placeholders to fill the 9-cell grid
-                        for(let i=0; i<7; i++) {
-                            stageCinema.appendChild(makeTile('span-4', ''));
-                        }
+                    case '3x3':
+                        filmTile.className = 'tile span-4'; stageCinema.appendChild(filmTile);
+                        if(guestIsVisible) { guestTile.className = 'tile span-4'; stageCinema.appendChild(guestTile); }
+                        else { stageCinema.appendChild(makeTile('span-4', 'Guest Slot')); }
+                        for(let i=0; i<7; i++) stageCinema.appendChild(makeTile('span-4', ''));
                         break;
                 }
-            } else { // This is the logic for when the host and film are shown side-by-side
-                if (hostPiP.parentElement) { hostPiP.parentElement.removeChild(hostPiP); }
+            } else {
+                if (hostPiP.parentElement) hostPiP.parentElement.removeChild(hostPiP);
                 switch (state.layout) {
-                    case 'host':
-                        hostTile.className = 'tile span-12';
-                        stageCinema.appendChild(hostTile);
-                        break;
+                    case 'host': hostTile.className = 'tile span-12'; stageCinema.appendChild(hostTile); break;
                     case 'split':
-                        hostTile.className = 'tile span-6';
-                        filmTile.className = 'tile span-6';
-                        stageCinema.appendChild(hostTile);
-                        stageCinema.appendChild(filmTile);
+                        hostTile.className = 'tile span-6'; filmTile.className = 'tile span-6';
+                        stageCinema.appendChild(hostTile); stageCinema.appendChild(filmTile);
                         break;
                     case '2x2':
-                        hostTile.className = 'tile span-6';
-                        filmTile.className = 'tile span-6';
-                        stageCinema.appendChild(hostTile);
-                        stageCinema.appendChild(filmTile);
-                        if (guestIsVisible) {
-                            guestTile.className = 'tile span-6';
-                            stageCinema.appendChild(guestTile);
-                        } else {
-                            stageCinema.appendChild(makeTile('span-6', 'Guest Slot')); // Placeholder
-                        }
+                        hostTile.className = 'tile span-6'; filmTile.className = 'tile span-6';
+                        stageCinema.appendChild(hostTile); stageCinema.appendChild(filmTile);
+                        if (guestIsVisible) { guestTile.className = 'tile span-6'; stageCinema.appendChild(guestTile); }
+                        else { stageCinema.appendChild(makeTile('span-6', 'Guest Slot')); }
                         stageCinema.appendChild(makeTile('span-6',''));
                         break;
-                    case '3x3': // ✨ NEW LOGIC FOR 3x3
-                        hostTile.className = 'tile span-4'; // Use span-4 for 3 columns
-                        filmTile.className = 'tile span-4';
-                        stageCinema.appendChild(hostTile);
-                        stageCinema.appendChild(filmTile);
-                        if (guestIsVisible) {
-                            guestTile.className = 'tile span-4';
-                            stageCinema.appendChild(guestTile);
-                        } else {
-                            stageCinema.appendChild(makeTile('span-4', 'Guest Slot')); // Placeholder
-                        }
-                        // Add the remaining 6 placeholders
-                        for(let i=0; i<6; i++) {
-                            stageCinema.appendChild(makeTile('span-4', ''));
-                        }
+                    case '3x3':
+                        hostTile.className = 'tile span-4'; filmTile.className = 'tile span-4';
+                        stageCinema.appendChild(hostTile); stageCinema.appendChild(filmTile);
+                        if (guestIsVisible) { guestTile.className = 'tile span-4'; stageCinema.appendChild(guestTile); }
+                        else { stageCinema.appendChild(makeTile('span-4', 'Guest Slot')); }
+                        for(let i=0; i<6; i++) stageCinema.appendChild(makeTile('span-4', ''));
                         break;
                 }
             }
@@ -860,9 +811,7 @@
                 }
             });
             renderLayout();
-            if (state.role === 'host') {
-                sendStateUpdate();
-            }
+            if (state.role === 'host') sendStateUpdate();
         }
 
         function layoutThumb(type, cinema=false) {
@@ -874,24 +823,10 @@
                 wrap.appendChild(blk);
                 return blk;
             };
-            if (type === 'host') {
-                wrap.style.gridTemplateColumns = '1fr';
-                addBlk(cinema ? 'film' : 'host');
-            } else if (type === 'split') {
-                wrap.style.gridTemplateColumns = '1fr 1fr';
-                addBlk(cinema ? 'film' : 'host');
-                addBlk('');
-            } else if (type === '2x2') {
-                wrap.style.gridTemplateColumns = '1fr 1fr';
-                wrap.style.gridTemplateRows = '1fr 1fr';
-                addBlk(cinema ? 'film' : 'host');
-                addBlk(''); addBlk(''); addBlk('');
-            } else if (type === '3x3') {
-                wrap.style.gridTemplateColumns = '1fr 1fr 1fr';
-                wrap.style.gridTemplateRows = '1fr 1fr 1fr';
-                addBlk(cinema ? 'film' : 'host');
-                for (let i = 0; i < 8; i++) addBlk('');
-            }
+            if (type === 'host') { wrap.style.gridTemplateColumns = '1fr'; addBlk(cinema ? 'film' : 'host');
+            } else if (type === 'split') { wrap.style.gridTemplateColumns = '1fr 1fr'; addBlk(cinema ? 'film' : 'host'); addBlk('');
+            } else if (type === '2x2') { wrap.style.gridTemplateColumns = '1fr 1fr'; wrap.style.gridTemplateRows = '1fr 1fr'; addBlk(cinema ? 'film' : 'host'); addBlk(''); addBlk(''); addBlk('');
+            } else if (type === '3x3') { wrap.style.gridTemplateColumns = '1fr 1fr 1fr'; wrap.style.gridTemplateRows = '1fr 1fr 1fr'; addBlk(cinema ? 'film' : 'host'); for (let i = 0; i < 8; i++) addBlk(''); }
             return wrap;
         }
         
@@ -914,16 +849,11 @@
         const btnResync = document.getElementById('btnResync');
 
         btnResync.onclick = () => {
-                  if (state.role === 'host' && state.filmLoaded) {
-                    send({
-                      type: 'force_sync',
-                      pos: videoEl.currentTime,
-                      t: performance.now(),
-                      isPlaying: state.playing // ✨ FIX: Include the current playback state
-                    });
-                    showToast("Resync signal sent to all guests.");
-                  }
-                };
+          if (state.role === 'host' && state.filmLoaded) {
+            send({ type: 'force_sync', pos: videoEl.currentTime, t: performance.now(), isPlaying: state.playing });
+            showToast("Resync signal sent to all guests.");
+          }
+        };
         const films = [
           {id:'f1', title:'Big Buck Bunny', url:'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4', thumb:'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c5/Big_buck_bunny_poster_big.jpg/800px-Big_buck_bunny_poster_big.jpg'},
           {id:'f2', title:'Sintel', url:'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4', thumb:'https://static.wixstatic.com/media/d8a03e_98dfdf4401a4478bb16361dd68f56c11~mv2.png'},
@@ -967,114 +897,116 @@
                 if(syncStateEl) syncStateEl.textContent='Ready';
                 renderLayout();
                 send({ type: 'film_selected', film: { id: f.id, url: f.url, thumb: f.thumb, title: f.title } });
-                if (state.role === 'host' && roomRef) {
-                  roomRef.child('film').set({ id: f.id, url: f.url, thumb: f.thumb, title: f.title });
-                }
+                if (state.role === 'host' && roomRef) roomRef.child('film').set({ id: f.id, url: f.url, thumb: f.thumb, title: f.title });
             } catch(e){
                 console.warn(e);
                 filmThumb.classList.remove('is-ready');
             }
         }
-        let driftAvg=0; function gentlySeekTo(target){ const d=target-videoEl.currentTime; driftAvg=0.8*driftAvg+0.2*d; if(syncStateEl) syncStateEl.textContent=Math.abs(driftAvg)<.15?'OK':'Adjusting'; if(Math.abs(d)>.8){ videoEl.currentTime=target; return;} videoEl.playbackRate = 1+Math.max(-0.03, Math.min(0.03, d*0.25)); }
+        
+        let driftAvg=0;
+        function gentlySeekTo(target){
+            const d = target - videoEl.currentTime;
+            driftAvg = 0.8 * driftAvg + 0.2 * d;
+            
+            if(syncStateEl) syncStateEl.textContent = Math.abs(driftAvg) < .25 ? 'OK' : 'Adjusting';
+
+            if (Math.abs(d) > 1.5) {
+                console.log(`DESYNC DETECTED: a ${d.toFixed(2)}s drift. Forcing a hard seek.`);
+                videoEl.currentTime = target;
+                videoEl.playbackRate = 1;
+                return;
+            }
+
+            if (Math.abs(d) > 0.1) {
+              const rate = 1 + Math.max(-0.1, Math.min(0.1, d * 0.5));
+              videoEl.playbackRate = rate;
+            } else {
+              videoEl.playbackRate = 1;
+            }
+        }
+        
+        function hostSeek(delta){ if(!state.filmLoaded) return; videoEl.currentTime=Math.max(0, videoEl.currentTime+delta); send({type:'seek',pos:videoEl.currentTime,t:performance.now()}); }
+        
+        function sendStateUpdate() {
+            if (state.role === 'host') send({ type: 'state_update', mode: state.mode, layout: state.layout, replaceHost: state.replaceHost, hostPiP: state.hostPiP });
+        }
+        
         function hostPlayPause(){
             if(!state.filmLoaded) return;
-            
             btnPlay.classList.remove('prompt-glow');
-
-            state.playing=!state.playing;
+            state.playing = !state.playing;
             btnPlay.textContent = state.playing ? 'Pause' : 'Play';
             btnPlay.classList.toggle('is-playing', state.playing);
+            
             if(state.playing){
                 videoEl.play();
                 setupOutputAudioProcessing();
                 if(mediaState.speakerOn) startOutputMeter();
                 speakerGroup.classList.toggle('is-active', mediaState.speakerOn);
-                send({type:'play',pos:videoEl.currentTime,t:performance.now()});
+                send({type:'play', pos:videoEl.currentTime, t:performance.now()});
             } else {
                 videoEl.pause();
                 stopOutputMeter();
                 speakerGroup.classList.remove('is-active');
-                send({type:'pause',pos:videoEl.currentTime,t:performance.now()});
+                send({type:'pause', pos:videoEl.currentTime, t:performance.now()});
             }
         }
-        function hostSeek(delta){ if(!state.filmLoaded) return; videoEl.currentTime=Math.max(0, videoEl.currentTime+delta); send({type:'seek',pos:videoEl.currentTime,t:performance.now()}); }
-        
-        function sendStateUpdate() {
-            if (state.role === 'host') {
-                send({
-                    type: 'state_update',
-                    mode: state.mode,
-                    layout: state.layout,
-                    replaceHost: state.replaceHost,
-                    hostPiP: state.hostPiP
-                });
-            }
-        }
-        
+
         onMsg(m=>{
-                    if (m.type === 'chat') {
-                        [chatLogStudio, chatLogCinema, chatLogShop].forEach(log => addChat(log, m));
-                        showOverlayMessage(m);
-                        return;
+            if (m.type === 'chat') {
+                [chatLogStudio, chatLogCinema, chatLogShop].forEach(log => addChat(log, m));
+                showOverlayMessage(m);
+                return;
+            }
+            if(state.role === 'guest') {
+                if(m.type==='play' || m.type==='seek' || m.type==='pause' || m.type==='force_sync'){
+                    const targetTime = m.pos + (performance.now() - m.t) / 1000;
+                    videoEl.currentTime = targetTime;
+                    const shouldBePlaying = (m.type === 'play') || (m.type === 'force_sync' && m.isPlaying);
+                    if (shouldBePlaying) {
+                        if (videoEl.muted) videoEl.muted = false;
+                        videoEl.play().catch(e => {
+                            console.warn("Guest play failed, likely autoplay", e);
+                            showOverlayMessage({user: 'System', text: "Tap the film to unmute and start playback."});
+                        });
+                        if(!mediaState.outputAudioSetup) setupOutputAudioProcessing();
+                    } else {
+                        videoEl.pause();
                     }
-                    if(state.role === 'guest') {
-                        // ✨ REWRITTEN LOGIC: All major host actions now force an immediate time AND state sync.
-                        if(m.type==='play' || m.type==='seek' || m.type==='pause' || m.type==='force_sync'){
-                            // Step 1: Calculate the host's true current time, down to the millisecond, accounting for latency.
-                            const targetTime = m.pos + (performance.now() - m.t) / 1000;
-                            
-                            // Step 2: Unconditionally force the guest's video to that exact spot. This is the "instant fast forward".
-                            videoEl.currentTime = targetTime;
-                            
-                            // Step 3: Determine the new state (PLAYING or PAUSED) based on the host's command.
-                            const shouldBePlaying = (m.type === 'play') || (m.type === 'force_sync' && m.isPlaying);
-
-                            // Step 4: Apply the new state.
-                            if (shouldBePlaying) {
-                                if (videoEl.muted) videoEl.muted = false;
-                                videoEl.play().catch(e => {
-                                    console.warn("Guest play failed, likely autoplay", e);
-                                    showOverlayMessage({user: 'System', text: "Tap the film to unmute and start playback."});
-                                });
-                                if(!mediaState.outputAudioSetup) setupOutputAudioProcessing();
-                            } else {
-                                videoEl.pause();
-                            }
-                        }
-                        
-                        // The 'tick' is a gentle nudge to correct minor drift between major actions.
-                        if(m.type==='tick'){ gentlySeekTo(m.pos + (performance.now()-m.t)/1000); }
-
-                        if(m.type === 'film_selected') { loadFilm(m.film); }
-
-                        if(m.type==='state_update') {
-                            setMode(m.mode);
-                            state.layout = m.layout;
-                            state.replaceHost = m.replaceHost;
-                            state.hostPiP = m.hostPiP;
-                            
-                            chkReplaceHost.checked = m.replaceHost;
-                            chkHostPiP.checked = m.hostPiP;
-                            pipRow.style.display = m.replaceHost ? 'inline-flex' : 'none';
-                            
-                            autoSetLayout(m.layout);
-
-                            if (m.video) {
-                                if (state.film?.id !== m.video.film?.id) { loadFilm(m.video.film); }
-                                const elapsed = (performance.now() - (m.video.t || performance.now())) / 1000;
-                                videoEl.currentTime = m.video.currentTime + elapsed;
-                                if (m.video.isPlaying) {
-                                    videoEl.play().catch(e=>console.warn(e));
-                                    if(!mediaState.outputAudioSetup) setupOutputAudioProcessing();
-                                } else {
-                                    videoEl.pause();
-                                }
-                            }
+                }
+                
+                if(m.type==='tick'){ gentlySeekTo(m.pos + (performance.now()-m.t)/1000); }
+                if(m.type === 'film_selected') { loadFilm(m.film); }
+                if(m.type==='state_update') {
+                    setMode(m.mode);
+                    state.layout = m.layout;
+                    state.replaceHost = m.replaceHost;
+                    state.hostPiP = m.hostPiP;
+                    chkReplaceHost.checked = m.replaceHost;
+                    chkHostPiP.checked = m.hostPiP;
+                    pipRow.style.display = m.replaceHost ? 'inline-flex' : 'none';
+                    autoSetLayout(m.layout);
+                    if (m.video) {
+                        if (state.film?.id !== m.video.film?.id) { loadFilm(m.video.film); }
+                        const elapsed = (performance.now() - (m.video.t || performance.now())) / 1000;
+                        videoEl.currentTime = m.video.currentTime + elapsed;
+                        if (m.video.isPlaying) {
+                            videoEl.play().catch(e=>console.warn(e));
+                            if(!mediaState.outputAudioSetup) setupOutputAudioProcessing();
+                        } else {
+                            videoEl.pause();
                         }
                     }
-                });
+                }
+            }
+        });
+        
         setInterval(()=>{ if(state.role==='host' && state.playing) send({type:'tick',pos:videoEl.currentTime,t:performance.now()}); }, 1500);
-        btnPlay.onclick=hostPlayPause; document.getElementById('btnSeekBack').onclick=()=> hostSeek(-10); document.getElementById('btnSeekFwd').onclick=()=> hostSeek(+10);
+
+        btnPlay.onclick=hostPlayPause;
+        document.getElementById('btnSeekBack').onclick=()=> hostSeek(-10);
+        document.getElementById('btnSeekFwd').onclick=()=> hostSeek(+10);
         chkReplaceHost.onchange=()=>{ state.replaceHost=chkReplaceHost.checked; pipRow.style.display = state.replaceHost ? 'inline-flex' : 'none'; renderLayout(); sendStateUpdate(); };
         chkHostPiP.onchange=()=>{ state.hostPiP=chkHostPiP.checked; renderLayout(); sendStateUpdate(); };
 
@@ -1095,51 +1027,13 @@
         const canvasChatOverlay = document.getElementById('canvasChatOverlay');
         function showOverlayMessage(msg) { if (!state.chatOverlayVisible) return; if (canvasChatOverlay.children.length >= 6) { canvasChatOverlay.firstChild.remove(); } const msgEl = document.createElement('div'); msgEl.className = 'canvas-chat-msg'; msgEl.innerHTML = `<strong>${escapeHtml(msg.user)}:</strong> ${escapeHtml(msg.text)}`; canvasChatOverlay.appendChild(msgEl); setTimeout(() => msgEl.classList.add('visible'), 50); }
         
-        function handleChatOverlayToggle(event) {
-            const isVisible = event.target.checked;
-            state.chatOverlayVisible = isVisible;
-            canvasChatOverlay.classList.toggle('hidden', !isVisible);
-            document.querySelectorAll('.chat-overlay-toggle-input').forEach(toggle => {
-                toggle.checked = isVisible;
-            });
-        }
+        function handleChatOverlayToggle(event) { const isVisible = event.target.checked; state.chatOverlayVisible = isVisible; canvasChatOverlay.classList.toggle('hidden', !isVisible); document.querySelectorAll('.chat-overlay-toggle-input').forEach(toggle => { toggle.checked = isVisible; }); }
 
-        const btnMicNew = document.getElementById('btnMicNew'),
-              micGroup = document.getElementById('micGroup'),
-              btnCamNew = document.getElementById('btnCamNew'),
-              btnSpeakerNew = document.getElementById('btnSpeakerNew'),
-              speakerGroup = document.getElementById('speakerGroup'),
-              micCaretNew = document.getElementById('micCaretNew'),
-              camCaretNew = document.getElementById('camCaretNew'),
-              speakerCaretNew = document.getElementById('speakerCaretNew'),
-              btnPlusNew = document.getElementById('btnPlusNew'),
-              micMenu = document.getElementById('micMenu'),
-              camMenu = document.getElementById('camMenu'),
-              speakerMenu = document.getElementById('speakerMenu'),
-              plusMenu = document.getElementById('plusMenu'),
-              micSel = document.getElementById('micSelect'),
-              camSel = document.getElementById('camSelect'),
-              speakerSel = document.getElementById('speakerSelect'),
-              gainSlider = document.getElementById('gainSlider'),
-              gainValueLabel = document.getElementById('gainValueLabel'),
-              camPreview = document.getElementById('camPreview'),
-              footerAudioMeter = document.getElementById('footerAudioMeter'),
-              outputAudioMeter = document.getElementById('outputAudioMeter'),
-              localVideoInput = document.getElementById('localVideoInput');
-              
+        const btnMicNew = document.getElementById('btnMicNew'), micGroup = document.getElementById('micGroup'), btnCamNew = document.getElementById('btnCamNew'), btnSpeakerNew = document.getElementById('btnSpeakerNew'), speakerGroup = document.getElementById('speakerGroup'), micCaretNew = document.getElementById('micCaretNew'), camCaretNew = document.getElementById('camCaretNew'), speakerCaretNew = document.getElementById('speakerCaretNew'), btnPlusNew = document.getElementById('btnPlusNew'), micMenu = document.getElementById('micMenu'), camMenu = document.getElementById('camMenu'), speakerMenu = document.getElementById('speakerMenu'), plusMenu = document.getElementById('plusMenu'), micSel = document.getElementById('micSelect'), camSel = document.getElementById('camSelect'), speakerSel = document.getElementById('speakerSelect'), gainSlider = document.getElementById('gainSlider'), gainValueLabel = document.getElementById('gainValueLabel'), camPreview = document.getElementById('camPreview'), footerAudioMeter = document.getElementById('footerAudioMeter'), outputAudioMeter = document.getElementById('outputAudioMeter'), localVideoInput = document.getElementById('localVideoInput');
         const mediaState = { micOn: false, camOn: false, shareOn: false, speakerOn: true, micStream: null, camStream: null, shareStream: null, micAudioCtx: null, micAnalyser: null, micLevelRAF: null, outputAudioSetup: false, outputAudioCtx: null, outputSource: null, outputGainNode: null, outputAnalyser: null, outputClipper: null, outputLevelRAF: null, recorder: null, recording: false, }; let activeMenu = null;
         
-        function openContextMenu(menu, button) {
-          if (activeMenu === menu) { menu.style.display = 'none'; activeMenu = null; return; }
-          if (activeMenu) activeMenu.style.display = 'none';
-          const rect = button.getBoundingClientRect();
-          const menuRect = menu.getBoundingClientRect();
-          menu.style.left = `${rect.left + (rect.width / 2) - (menuRect.width / 2)}px`;
-          menu.style.display = 'flex';
-          activeMenu = menu;
-        }
+        function openContextMenu(menu, button) { if (activeMenu === menu) { menu.style.display = 'none'; activeMenu = null; return; } if (activeMenu) activeMenu.style.display = 'none'; const rect = button.getBoundingClientRect(); const menuRect = menu.getBoundingClientRect(); menu.style.left = `${rect.left + (rect.width / 2) - (menuRect.width / 2)}px`; menu.style.display = 'flex'; activeMenu = menu; }
         document.addEventListener('click', (e) => { if (activeMenu && !activeMenu.contains(e.target) && !e.target.closest('.ctl-group-new') && !e.target.closest('#btnPlusNew')) { activeMenu.style.display = 'none'; activeMenu = null; } });
-        
         micCaretNew.onclick = (e) => { e.stopPropagation(); openContextMenu(micMenu, e.currentTarget.closest('.ctl-group-new')); };
         camCaretNew.onclick = (e) => { e.stopPropagation(); openContextMenu(camMenu, e.currentTarget.closest('.ctl-group-new')); };
         speakerCaretNew.onclick = (e) => { e.stopPropagation(); openContextMenu(speakerMenu, e.currentTarget.closest('.ctl-group-new')); };
@@ -1147,21 +1041,8 @@
         
         async function getDevices() { try { if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return; const devices = await navigator.mediaDevices.enumerateDevices(); populateDeviceLists(devices); } catch (e) { console.warn('getDevices failed', e); } }
         function populateDeviceLists(devices) {
-          const fill = (select, list, kind) => {
-            if (!select) return;
-            const currentId = select.value;
-            select.innerHTML = '';
-            list.filter(d => d.kind === kind).forEach((d, i) => {
-              const opt = document.createElement('option');
-              opt.value = d.deviceId;
-              opt.textContent = d.label || `${kind.replace('input', '').replace('output','')} ${i + 1}`;
-              select.appendChild(opt);
-            });
-            if ([...select.options].some(o => o.value === currentId)) { select.value = currentId; }
-          };
-          fill(micSel, devices, 'audioinput');
-          fill(camSel, devices, 'videoinput');
-          fill(speakerSel, devices, 'audiooutput');
+          const fill = (select, list, kind) => { if (!select) return; const currentId = select.value; select.innerHTML = ''; list.filter(d => d.kind === kind).forEach((d, i) => { const opt = document.createElement('option'); opt.value = d.deviceId; opt.textContent = d.label || `${kind.replace('input', '').replace('output','')} ${i + 1}`; select.appendChild(opt); }); if ([...select.options].some(o => o.value === currentId)) { select.value = currentId; } };
+          fill(micSel, devices, 'audioinput'); fill(camSel, devices, 'videoinput'); fill(speakerSel, devices, 'audiooutput');
         }
         function stopStream(stream) { if (!stream) return; stream.getTracks().forEach(t => t.stop()); }
         async function requestMic(deviceId) { stopStream(mediaState.micStream); stopMicMeter(); const stream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: deviceId ? { exact: deviceId } : undefined, echoCancellation: true, noiseSuppression: true }, video: false }); mediaState.micStream = stream; setMicState(true); return stream; }
@@ -1170,18 +1051,10 @@
         function setCamState(on) {
             mediaState.camOn = on;
             if(btnCamNew) btnCamNew.setAttribute('aria-pressed', on);
+            if (mediaState.camStream) mediaState.camStream.getVideoTracks().forEach(t => t.enabled = on);
             const stream = on ? mediaState.camStream : null;
-            if (mediaState.camStream) {
-                mediaState.camStream.getVideoTracks().forEach(t => t.enabled = on);
-            }
-            camPreview.srcObject = stream;
-            hostVideoEl.srcObject = stream;
-            pipVideoEl.srcObject = stream;
-            if(stream) {
-                camPreview.play().catch(e => console.warn("Preview play failed", e));
-                hostVideoEl.play().catch(e => console.warn("Host play failed", e));
-                pipVideoEl.play().catch(e => console.warn("PiP play failed", e));
-            }
+            camPreview.srcObject = stream; hostVideoEl.srcObject = stream; pipVideoEl.srcObject = stream;
+            if(stream) { camPreview.play().catch(e=>e); hostVideoEl.play().catch(e=>e); pipVideoEl.play().catch(e=>e); }
             renderLayout();
         }
 
@@ -1189,516 +1062,172 @@
           mediaState.micOn = on;
           if(btnMicNew) btnMicNew.setAttribute('aria-pressed', on);
           if(micGroup) micGroup.classList.toggle('is-active', on);
-          if (mediaState.micStream) {
-            mediaState.micStream.getAudioTracks().forEach(t => t.enabled = on);
-            on ? startMicMeter(mediaState.micStream) : stopMicMeter();
-          } else {
-            stopMicMeter();
-          }
+          if (mediaState.micStream) { mediaState.micStream.getAudioTracks().forEach(t => t.enabled = on); on ? startMicMeter(mediaState.micStream) : stopMicMeter(); }
+          else { stopMicMeter(); }
         }
-
-        function setShareState(on) { mediaState.shareOn = on; btnPlusNew.setAttribute('aria-pressed', on); }
-        function stopShare() { stopStream(mediaState.shareStream); mediaState.shareStream = null; setShareState(false); }
         
         function startMicMeter(stream){ if (!stream || !stream.getAudioTracks().length) return; const ctx = mediaState.micAudioCtx || new (window.AudioContext || window.webkitAudioContext)(); if(ctx.state === 'suspended') ctx.resume(); mediaState.micAudioCtx = ctx; const src = ctx.createMediaStreamSource(stream); const analyser = ctx.createAnalyser(); analyser.fftSize = 256; src.connect(analyser); mediaState.micAnalyser = analyser; const data = new Uint8Array(analyser.frequencyBinCount); const bars = footerAudioMeter.children; function tick(){ analyser.getByteFrequencyData(data); let sum = data.reduce((a,b) => a+b, 0); const avg = sum / data.length; const pct = Math.min(100, (avg/128) * 150); bars[0].style.height = `${Math.min(100, pct * 0.8)}%`; bars[1].style.height = `${Math.min(100, pct * 1.2)}%`; bars[2].style.height = `${Math.min(100, pct * 0.7)}%`; mediaState.micLevelRAF = requestAnimationFrame(tick); } cancelAnimationFrame(mediaState.micLevelRAF); tick(); }
         function stopMicMeter(){ cancelAnimationFrame(mediaState.micLevelRAF); mediaState.micLevelRAF = null; if(mediaState.micAnalyser) { try { mediaState.micAnalyser.disconnect(); } catch(e){} } if(footerAudioMeter) [...footerAudioMeter.children].forEach(bar => bar.style.height = '10%'); }
-        
         btnMicNew.onclick = () => setMicState(!mediaState.micOn);
         btnCamNew.onclick = () => setCamState(!mediaState.camOn);
-        
         micSel.onchange = () => requestMic(micSel.value).catch(e => console.warn(e));
         camSel.onchange = () => requestCam(camSel.value).catch(e => console.warn(e));
-        
         document.getElementById('plusMenuScreenShare').onclick = () => { showToast('Screen Share clicked!'); activeMenu.style.display = 'none'; };
-        document.getElementById('plusMenuLocalVideo').onclick = () => {
-            localVideoInput.click();
-            activeMenu.style.display = 'none';
-        };
-
-        function generateThumbnail(videoFile) {
-            return new Promise((resolve) => {
-                const video = document.createElement('video');
-                const canvas = document.createElement('canvas');
-                const url = URL.createObjectURL(videoFile);
-                
-                video.onloadedmetadata = () => {
-                    video.currentTime = Math.min(10, video.duration / 2);
-                };
-
-                video.onseeked = () => {
-                    canvas.width = video.videoWidth;
-                    canvas.height = video.videoHeight;
-                    canvas.getContext('2d').drawImage(video, 0, 0, video.videoWidth, video.videoHeight);
-                    const thumbUrl = canvas.toDataURL('image/jpeg');
-                    URL.revokeObjectURL(url);
-                    resolve(thumbUrl);
-                };
-                
-                video.src = url;
-                video.load();
-            });
-        }
-
+        document.getElementById('plusMenuLocalVideo').onclick = () => { localVideoInput.click(); activeMenu.style.display = 'none'; };
         localVideoInput.onchange = async (event) => {
-            const file = event.target.files[0];
-            if (!file) return;
-
-            showToast('Generating thumbnail...');
+            const file = event.target.files[0]; if (!file) return; showToast('Generating thumbnail...');
             const fileURL = URL.createObjectURL(file);
-            const thumbnailUrl = await generateThumbnail(file);
-
-            const filmObject = {
-                id: 'local',
-                title: file.name,
-                url: fileURL,
-                thumb: thumbnailUrl
-            };
-            
-            loadFilm(filmObject);
+            const thumbnailUrl = await (new Promise((resolve) => { const video = document.createElement('video'); const canvas = document.createElement('canvas'); const url = URL.createObjectURL(file); video.onloadedmetadata = () => { video.currentTime = Math.min(1, video.duration / 2); }; video.onseeked = () => { canvas.width = video.videoWidth; canvas.height = video.videoHeight; canvas.getContext('2d').drawImage(video, 0, 0, video.videoWidth, video.videoHeight); URL.revokeObjectURL(url); resolve(canvas.toDataURL('image/jpeg')); }; video.src = url; video.load(); }));
+            loadFilm({ id: 'local', title: file.name, url: fileURL, thumb: thumbnailUrl });
             setMode('cinema');
-            
-            mediaState.speakerOn = true;
-            btnSpeakerNew.setAttribute('aria-pressed', true);
-            btnSpeakerNew.classList.remove('is-muted');
-            btnSpeakerNew.dataset.tip = 'Mute';
+            mediaState.speakerOn = true; btnSpeakerNew.setAttribute('aria-pressed', true); btnSpeakerNew.classList.remove('is-muted'); btnSpeakerNew.dataset.tip = 'Mute';
             if(mediaState.outputGainNode) mediaState.outputGainNode.gain.value = gainSlider.value;
-
-            showToast(`Loaded: ${file.name}`);
-            
-            event.target.value = '';
+            showToast(`Loaded: ${file.name}`); event.target.value = '';
         };
-
-        // --- Web Audio API Logic ---
-        function makeSoftClipCurve(amount = 0.8) {
-            const n_samples = 44100;
-            const curve = new Float32Array(n_samples);
-            const deg = Math.PI / 180;
-            for (let i = 0; i < n_samples; ++i) {
-                const x = i * 2 / n_samples - 1;
-                curve[i] = (3 + amount) * x * 20 * deg / (Math.PI + amount * Math.abs(x));
-            }
-            return curve;
-        }
 
         function setupOutputAudioProcessing() {
-            if (mediaState.outputAudioSetup) {
-                if (mediaState.outputAudioCtx.state === 'suspended') {
-                    mediaState.outputAudioCtx.resume();
-                }
-                return;
-            };
-            
+            if (mediaState.outputAudioSetup) { if (mediaState.outputAudioCtx.state === 'suspended') mediaState.outputAudioCtx.resume(); return; };
             const ctx = new (window.AudioContext || window.webkitAudioContext)();
-            const source = ctx.createMediaElementSource(videoEl);
-            const gainNode = ctx.createGain();
-            const clipper = new WaveShaperNode(ctx, { curve: makeSoftClipCurve() });
-            const analyser = ctx.createAnalyser();
-            
+            const source = ctx.createMediaElementSource(videoEl); const gainNode = ctx.createGain(); const clipper = new WaveShaperNode(ctx, { curve: (() => { const c = new Float32Array(44100); for (let i=0;i<44100;++i) { const x=i*2/44100-1; c[i]=(3+.8)*x*20*(Math.PI/180)/(Math.PI+.8*Math.abs(x)); } return c; })() }); const analyser = ctx.createAnalyser();
             source.connect(gainNode).connect(clipper).connect(analyser).connect(ctx.destination);
-            
-            videoEl.muted = false;
-            gainNode.gain.value = mediaState.speakerOn ? gainSlider.value : 0;
-
-            mediaState.outputAudioCtx = ctx;
-            mediaState.outputSource = source;
-            mediaState.outputGainNode = gainNode;
-            mediaState.outputClipper = clipper;
-            mediaState.outputAnalyser = analyser;
-            mediaState.outputAudioSetup = true;
-
-            gainSlider.oninput = () => {
-                if (mediaState.speakerOn) {
-                    gainNode.gain.value = gainSlider.value;
-                }
-                const db = 20 * Math.log10(gainSlider.value);
-                gainValueLabel.textContent = `${db.toFixed(1)} dB`;
-            };
+            videoEl.muted = false; gainNode.gain.value = mediaState.speakerOn ? gainSlider.value : 0;
+            Object.assign(mediaState, { outputAudioCtx:ctx, outputSource:source, outputGainNode:gainNode, outputClipper:clipper, outputAnalyser:analyser, outputAudioSetup:true });
+            gainSlider.oninput = () => { if (mediaState.speakerOn) gainNode.gain.value = gainSlider.value; gainValueLabel.textContent = `${(20 * Math.log10(gainSlider.value)).toFixed(1)} dB`; };
         }
 
         function startOutputMeter(){
             if (!mediaState.outputAnalyser) return;
-            const analyser = mediaState.outputAnalyser;
-            analyser.fftSize = 256;
-            const data = new Uint8Array(analyser.frequencyBinCount);
-            const bars = outputAudioMeter.children;
-            const rootStyles = getComputedStyle(document.documentElement);
-            const okColor = rootStyles.getPropertyValue('--ok').trim();
-            const warnColor = rootStyles.getPropertyValue('--warn').trim();
-            const dangerColor = rootStyles.getPropertyValue('--danger').trim();
-
+            const analyser = mediaState.outputAnalyser; analyser.fftSize = 256; const data = new Uint8Array(analyser.frequencyBinCount); const bars = outputAudioMeter.children;
+            const rootStyles = getComputedStyle(document.documentElement); const okColor = rootStyles.getPropertyValue('--ok').trim(); const warnColor = rootStyles.getPropertyValue('--warn').trim(); const dangerColor = rootStyles.getPropertyValue('--danger').trim();
             function tick(){
-                analyser.getByteFrequencyData(data);
-                let sum = data.reduce((a,b) => a+b, 0);
-                const avg = sum / data.length;
-                const pct = Math.min(100, (avg/128) * 150 * (mediaState.outputGainNode.gain.value || 1));
-                
-                let color = okColor;
-                if (pct >= 95) color = dangerColor;
-                else if (pct >= 85) color = warnColor;
-
-                for(const bar of bars) {
-                    bar.style.backgroundColor = color;
-                }
-                bars[0].style.height = `${Math.min(100, pct * 0.8)}%`;
-                bars[1].style.height = `${Math.min(100, pct * 1.2)}%`;
-                bars[2].style.height = `${Math.min(100, pct * 0.7)}%`;
+                analyser.getByteFrequencyData(data); let sum = data.reduce((a,b) => a+b, 0); const avg = sum / data.length; const pct = Math.min(100, (avg/128) * 150 * (mediaState.outputGainNode.gain.value || 1));
+                let color = okColor; if (pct >= 95) color = dangerColor; else if (pct >= 85) color = warnColor;
+                for(const bar of bars) bar.style.backgroundColor = color;
+                bars[0].style.height = `${Math.min(100, pct * 0.8)}%`; bars[1].style.height = `${Math.min(100, pct * 1.2)}%`; bars[2].style.height = `${Math.min(100, pct * 0.7)}%`;
                 mediaState.outputLevelRAF = requestAnimationFrame(tick);
             }
-            cancelAnimationFrame(mediaState.outputLevelRAF);
-            tick();
+            cancelAnimationFrame(mediaState.outputLevelRAF); tick();
         }
-        function stopOutputMeter(){
-            cancelAnimationFrame(mediaState.outputLevelRAF);
-            mediaState.outputLevelRAF = null;
-            if(outputAudioMeter) [...outputAudioMeter.children].forEach(bar => {
-                bar.style.height = '10%';
-                bar.style.backgroundColor = 'var(--ok)';
-            });
-        }
+        function stopOutputMeter(){ cancelAnimationFrame(mediaState.outputLevelRAF); mediaState.outputLevelRAF = null; if(outputAudioMeter) [...outputAudioMeter.children].forEach(bar => { bar.style.height = '10%'; bar.style.backgroundColor = 'var(--ok)'; }); }
 
         btnSpeakerNew.onclick = () => {
-            mediaState.speakerOn = !mediaState.speakerOn;
-            btnSpeakerNew.setAttribute('aria-pressed', mediaState.speakerOn);
-            btnSpeakerNew.classList.toggle('is-muted', !mediaState.speakerOn);
-            speakerGroup.classList.toggle('is-active', mediaState.speakerOn && state.playing);
-            btnSpeakerNew.dataset.tip = mediaState.speakerOn ? 'Mute' : 'Unmute';
-
-            if (mediaState.outputGainNode) {
-                mediaState.outputGainNode.gain.value = mediaState.speakerOn ? gainSlider.value : 0;
-            }
-
-            if (mediaState.speakerOn && state.playing) startOutputMeter();
-            else stopOutputMeter();
+            mediaState.speakerOn = !mediaState.speakerOn; btnSpeakerNew.setAttribute('aria-pressed', mediaState.speakerOn); btnSpeakerNew.classList.toggle('is-muted', !mediaState.speakerOn); speakerGroup.classList.toggle('is-active', mediaState.speakerOn && state.playing); btnSpeakerNew.dataset.tip = mediaState.speakerOn ? 'Mute' : 'Unmute';
+            if (mediaState.outputGainNode) mediaState.outputGainNode.gain.value = mediaState.speakerOn ? gainSlider.value : 0;
+            if (mediaState.speakerOn && state.playing) startOutputMeter(); else stopOutputMeter();
         };
 
-        speakerSel.onchange = async () => {
-          try {
-            const sinkId = speakerSel.value;
-            if (typeof videoEl.setSinkId !== 'undefined') {
-              await videoEl.setSinkId(sinkId);
-              await remoteVideoEl.setSinkId(sinkId);
-              if (mediaState.outputAudioCtx) {
-                await mediaState.outputAudioCtx.setSinkId(sinkId);
-              }
-              showToast(`Audio output set to ${speakerSel.options[speakerSel.selectedIndex].text}`);
-            } else {
-              showToast('Changing audio output is not supported by this browser.');
-            }
-          } catch (err) {
-            console.error('Error setting audio output:', err);
-            showToast('Failed to set audio output.');
-          }
-        };
+        speakerSel.onchange = async () => { try { if (typeof videoEl.setSinkId !== 'undefined') { await videoEl.setSinkId(speakerSel.value); await remoteVideoEl.setSinkId(speakerSel.value); if (mediaState.outputAudioCtx) await mediaState.outputAudioCtx.setSinkId(speakerSel.value); showToast(`Audio output set to ${speakerSel.options[speakerSel.selectedIndex].text}`); } else { showToast('Changing audio output is not supported.'); } } catch (err) { console.error('Error setting audio output:', err); showToast('Failed to set audio output.'); } };
         
         let permissionsInitialized = false;
         async function initPermissions() {
           if (permissionsInitialized) return;
           try {
             const stream = await navigator.mediaDevices.getUserMedia({audio:true, video:true});
-            await getDevices();
-            stream.getTracks().forEach(track => track.stop());
+            await getDevices(); stream.getTracks().forEach(track => track.stop());
             if(micSel.options.length > 0) await requestMic(micSel.value);
             if(camSel.options.length > 0) await requestCam(camSel.value);
             permissionsInitialized = true;
-          } catch(e) {
-            console.warn('Permissions denied on initial load.', e);
-            showToast("Could not get camera/mic permissions.");
-            setMicState(false);
-            setCamState(false);
-          }
+          } catch(e) { console.warn('Permissions denied', e); showToast("Could not get camera/mic permissions."); setMicState(false); setCamState(false); }
         }
         
         const btnGoLive = document.getElementById('btnGoLive'), testModeCheck = document.getElementById('testModeCheck'), roomPill = document.getElementById('roomPill'), roomIdLabel = document.getElementById('roomIdLabel'), participantsMenu = document.getElementById('participantsMenu'), btnCopyInvite = document.getElementById('btnCopyInvite'), emailInviteLink = document.getElementById('emailInviteLink'), btnRecord = document.getElementById('btnRecordNew'), endModal = document.getElementById('endModal');
         let pc = null;
-        const firebaseConfig = {
-          apiKey: "AIzaSyDWQlG6jsOCei5UTHWZyAM6Yp2EWbnY-k0",
-          authDomain: "imboxo-live-test.firebaseapp.com",
-          databaseURL: "https://imboxo-live-test-default-rtdb.firebaseio.com",
-          projectId: "imboxo-live-test",
-          storageBucket: "imboxo-live-test.firebasestorage.app",
-          messagingSenderId: "663932175961",
-          appId: "1:663932175961:web:5937c969a51d5b44af1348"
-        };
+        const firebaseConfig = { apiKey: "AIzaSyDWQlG6jsOCei5UTHWZyAM6Yp2EWbnY-k0", authDomain: "imboxo-live-test.firebaseapp.com", databaseURL: "https://imboxo-live-test-default-rtdb.firebaseio.com", projectId: "imboxo-live-test", storageBucket: "imboxo-live-test.firebasestorage.app", messagingSenderId: "663932175961", appId: "1:663932175961:web:5937c969a51d5b44af1348" };
         let fbApp, fbDb, roomRef;
         const USE_SIGNALING = firebaseConfig.apiKey && firebaseConfig.databaseURL; if (USE_SIGNALING) { fbApp = firebase.initializeApp(firebaseConfig); fbDb = firebase.database(); } else { console.warn("Firebase config is missing. Real 'Go Live' will not work."); }
         testModeCheck.onchange = () => { state.isTesting = testModeCheck.checked; };
 
         async function handleGoLiveClick() {
             if (state.isTesting) {
-                btnGoLive.textContent = '✓ Testing';
-                btnGoLive.style.background = 'var(--cyan)';
-                btnGoLive.style.color = 'var(--bg)';
-                btnGoLive.style.fontWeight = '700';
-                btnGoLive.disabled = true;
-                document.querySelector('.toggle-group').style.display = 'none';
-                showToast("Test Mode started. Highlight products to see the preview.");
+                btnGoLive.textContent = '✓ Testing'; btnGoLive.style.background = 'var(--cyan)'; btnGoLive.style.color = 'var(--bg)'; btnGoLive.style.fontWeight = '700'; btnGoLive.disabled = true; document.querySelector('.toggle-group').style.display = 'none'; showToast("Test Mode started. Highlight products to see the preview.");
                 return;
             }
-
-            if (!USE_SIGNALING) {
-                showToast("Firebase is not configured. Cannot go live.");
-                return;
-            }
-            
+            if (!USE_SIGNALING) { showToast("Firebase is not configured. Cannot go live."); return; }
             await initPermissions();
-
-            btnGoLive.disabled = true;
-            btnGoLive.textContent = 'Creating Room...';
-
+            btnGoLive.disabled = true; btnGoLive.textContent = 'Creating Room...';
             pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
             setupPeerConnection(pc);
-
-            pc.onnegotiationneeded = async () => {
-                try {
-                    console.log("Host: onnegotiationneeded event fired. Creating offer...");
-                    const offerDescription = await pc.createOffer();
-                    await pc.setLocalDescription(offerDescription);
-                    const offer = { sdp: offerDescription.sdp, type: offerDescription.type };
-                    await roomRef.child('offer').set(offer);
-                    console.log("Host: Offer set in Firebase.");
-                } catch (err) {
-                    console.error("Host: Error during negotiation:", err);
-                }
-            };
-            
-            roomRef = fbDb.ref('rooms').push();
-            state.roomId = roomRef.key;
-
-            const offerCandidates = roomRef.child('offerCandidates');
-            pc.onicecandidate = event => {
-              if (event.candidate) { offerCandidates.push(event.candidate.toJSON()); }
-            };
-
-            if (mediaState.micStream) {
-              console.log("Host: Adding Mic Track");
-              mediaState.micStream.getTracks().forEach(track => pc.addTrack(track, mediaState.micStream));
-            }
-            if (mediaState.camStream) {
-              console.log("Host: Adding Cam Track");
-              mediaState.camStream.getTracks().forEach(track => pc.addTrack(track, mediaState.camStream));
-            }
-
-            roomIdLabel.textContent = state.roomId;
-            roomPill.style.display = 'inline-flex';
-            const newUrl = `${location.protocol}//${location.host}${location.pathname}?room=${state.roomId}`;
-            history.pushState({ path: newUrl }, '', newUrl);
-            showToast("Room is live! Share the URL to invite guests.");
-            btnGoLive.textContent = '✓ Live';
-            btnGoLive.style.background = 'var(--ok)';
-
-            roomRef.on('value', async snapshot => {
-                const data = snapshot.val();
-                if (data?.answer && pc.signalingState !== 'stable') {
-                    console.log("Host: Received answer. Setting remote description.");
-                    const answerDescription = new RTCSessionDescription(data.answer);
-                    await pc.setRemoteDescription(answerDescription);
-                }
-            });
-            
-            const answerCandidates = roomRef.child('answerCandidates');
-            answerCandidates.on('child_added', snapshot => {
-                const candidate = new RTCIceCandidate(snapshot.val());
-                pc.addIceCandidate(candidate);
-            });
+            pc.onnegotiationneeded = async () => { try { const offerDescription = await pc.createOffer(); await pc.setLocalDescription(offerDescription); await roomRef.child('offer').set({ sdp: offerDescription.sdp, type: offerDescription.type }); } catch (err) { console.error("Host: Error during negotiation:", err); } };
+            roomRef = fbDb.ref('rooms').push(); state.roomId = roomRef.key;
+            pc.onicecandidate = e => { if (e.candidate) roomRef.child('offerCandidates').push(e.candidate.toJSON()); };
+            if (mediaState.micStream) mediaState.micStream.getTracks().forEach(track => pc.addTrack(track, mediaState.micStream));
+            if (mediaState.camStream) mediaState.camStream.getTracks().forEach(track => pc.addTrack(track, mediaState.camStream));
+            roomIdLabel.textContent = state.roomId; roomPill.style.display = 'inline-flex';
+            history.pushState({}, '', `${location.pathname}?room=${state.roomId}`);
+            showToast("Room is live! Share the URL to invite guests."); btnGoLive.textContent = '✓ Live'; btnGoLive.style.background = 'var(--ok)';
+            roomRef.on('value', async s => { const d = s.val(); if (d?.answer && pc.signalingState !== 'stable') await pc.setRemoteDescription(new RTCSessionDescription(d.answer)); });
+            roomRef.child('answerCandidates').on('child_added', s => pc.addIceCandidate(new RTCIceCandidate(s.val())));
         }
 
         function setupPeerConnection(peerConnection) {
-                    peerConnection.oniceconnectionstatechange = () => console.log(`[${state.role}] ICE Connection State: ${peerConnection.iceConnectionState}`);
-                    peerConnection.onsignalingstatechange = () => console.log(`[${state.role}] Signaling State: ${peerConnection.signalingState}`);
-
-                    peerConnection.ontrack = (event) => {
-                        console.log(`[${state.role}] ONTRACK FIRED! A remote stream has arrived.`, event);
-                        if (event.streams && event.streams[0]) {
-                            console.log(`[${state.role}] Attaching remote stream to video element:`, event.streams[0]);
-                            remoteVideoEl.srcObject = event.streams[0];
-                        } else {
-                            console.warn(`[${state.role}] Ontrack event fired but no streams found.`);
-                        }
-                    };
-
-                    peerConnection.onconnectionstatechange = () => {
-                      console.log(`[${state.role}] Connection state: ${peerConnection.connectionState}`);
-                      if (peerConnection.connectionState === 'connected') {
-                          if (state.role === 'host') {
-                              showToast("Guest has connected!");
-                              
-                              send({
-                                  type: 'state_update',
-                                  mode: state.mode,
-                                  layout: state.layout,
-                                  replaceHost: state.replaceHost,
-                                  hostPiP: state.hostPiP,
-                                  video: {
-                                      isPlaying: state.playing,
-                                      currentTime: videoEl.currentTime,
-                                      film: state.film,
-                                      t: performance.now() // ✨ FINAL FIX: Add timestamp for perfect initial sync
-                                  }
-                              });
-
-                          } else { // Guest
-                              showToast("Connected to host!");
-                          }
-                      } else if (['disconnected', 'closed', 'failed'].includes(peerConnection.connectionState)) {
-                          if (state.role === 'host') {
-                              showToast("Guest has disconnected.");
-                              autoSetLayout('host');
-                          } else {
-                              showToast("Disconnected from host.");
-                          }
-                      }
-                      renderLayout();
-                    };
-                }
+            peerConnection.oniceconnectionstatechange = () => console.log(`[${state.role}] ICE State: ${peerConnection.iceConnectionState}`);
+            peerConnection.onsignalingstatechange = () => console.log(`[${state.role}] Signaling State: ${peerConnection.signalingState}`);
+            peerConnection.ontrack = (event) => { if (event.streams && event.streams[0]) remoteVideoEl.srcObject = event.streams[0]; };
+            peerConnection.onconnectionstatechange = () => {
+              if (peerConnection.connectionState === 'connected') {
+                  if (state.role === 'host') {
+                      showToast("Guest has connected!");
+                      send({ type: 'state_update', mode: state.mode, layout: state.layout, replaceHost: state.replaceHost, hostPiP: state.hostPiP, video: { isPlaying: state.playing, currentTime: videoEl.currentTime, film: state.film, t: performance.now() } });
+                  } else { showToast("Connected to host!"); }
+              } else if (['disconnected', 'closed', 'failed'].includes(peerConnection.connectionState)) {
+                  if (state.role === 'host') { showToast("Guest has disconnected."); autoSetLayout('host'); }
+                  else { showToast("Disconnected from host."); }
+              }
+              renderLayout();
+            };
+        }
+        
         async function joinRoom(roomId) {
-            setRole('guest');
-            await initPermissions();
-
+            setRole('guest'); await initPermissions();
             roomRef = fbDb.ref(`rooms/${roomId}`);
             const snapshot = await roomRef.once('value');
-            if (!snapshot.exists()) {
-                showToast("Room does not exist!");
-                return;
-            }
-
+            if (!snapshot.exists()) { showToast("Room does not exist!"); return; }
             pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
             setupPeerConnection(pc);
-
-            if (mediaState.micStream) {
-              console.log("Guest: Adding Mic Track");
-              mediaState.micStream.getTracks().forEach(track => pc.addTrack(track, mediaState.micStream));
-            }
-            if (mediaState.camStream) {
-              console.log("Guest: Adding Cam Track");
-              mediaState.camStream.getTracks().forEach(track => pc.addTrack(track, mediaState.camStream));
-            }
-
-            const offerCandidates = roomRef.child('offerCandidates');
-            offerCandidates.on('child_added', snapshot => {
-                const candidate = new RTCIceCandidate(snapshot.val());
-                pc.addIceCandidate(candidate);
-            });
-
-            console.log("Guest: Setting remote description (offer).");
-            const offerDescription = snapshot.val().offer;
-            await pc.setRemoteDescription(new RTCSessionDescription(offerDescription));
-
-            console.log("Guest: Creating answer.");
-            const answerDescription = await pc.createAnswer();
-            await pc.setLocalDescription(answerDescription);
-            
-            const answer = { type: answerDescription.type, sdp: answerDescription.sdp, };
-            await roomRef.update({ answer });
-            console.log("Guest: Answer sent to Firebase.");
-
-            const answerCandidates = roomRef.child('answerCandidates');
-            pc.onicecandidate = event => {
-              if (event.candidate) {
-                answerCandidates.push(event.candidate.toJSON());
-              }
-            };
-
-            roomIdLabel.textContent = roomId;
-            roomPill.style.display = 'inline-flex';
-            btnGoLive.disabled = true;
-            btnGoLive.textContent = "Joined";
+            if (mediaState.micStream) mediaState.micStream.getTracks().forEach(track => pc.addTrack(track, mediaState.micStream));
+            if (mediaState.camStream) mediaState.camStream.getTracks().forEach(track => pc.addTrack(track, mediaState.camStream));
+            roomRef.child('offerCandidates').on('child_added', s => pc.addIceCandidate(new RTCIceCandidate(s.val())));
+            await pc.setRemoteDescription(new RTCSessionDescription(snapshot.val().offer));
+            const answerDescription = await pc.createAnswer(); await pc.setLocalDescription(answerDescription);
+            await roomRef.update({ answer: { type: answerDescription.type, sdp: answerDescription.sdp } });
+            pc.onicecandidate = e => { if (e.candidate) roomRef.child('answerCandidates').push(e.candidate.toJSON()); };
+            roomIdLabel.textContent = roomId; roomPill.style.display = 'inline-flex';
+            btnGoLive.disabled = true; btnGoLive.textContent = "Joined";
         }
 
         btnGoLive.onclick = handleGoLiveClick;
-        
-        document.getElementById('btnParticipantsNew').onclick = (e) => {
-          if (!state.roomId) { showToast("You must 'Go Live' to invite participants."); return; }
-          const subject = encodeURIComponent("Join my IMBOXO Live session!");
-          const body = encodeURIComponent(`${location.href}`);
-          emailInviteLink.href = `mailto:?subject=${subject}&body=${body}`;
-          e.stopPropagation();
-          openContextMenu(participantsMenu, e.currentTarget);
-        };
-        
+        document.getElementById('btnParticipantsNew').onclick = (e) => { if (!state.roomId) { showToast("Go Live to invite participants."); return; } emailInviteLink.href = `mailto:?subject=${encodeURIComponent("Join my IMBOXO Live session!")}&body=${encodeURIComponent(location.href)}`; e.stopPropagation(); openContextMenu(participantsMenu, e.currentTarget); };
         btnCopyInvite.onclick = async () => { try { await navigator.clipboard.writeText(location.href); showToast("Invite link copied!"); } catch (e) { showToast("Failed to copy link."); } activeMenu.style.display = 'none'; };
-        
         btnRecord.onclick = () => { if (mediaState.recording) stopRecording(); else startRecording(); };
         function startRecording() {
           if (!mediaState.camStream || !mediaState.micStream) { showToast("Camera and mic must be on to record."); return; }
-          const tracks = [...mediaState.camStream.getTracks(), ...mediaState.micStream.getTracks()];
-          if(remoteVideoEl.srcObject) { tracks.push(...remoteVideoEl.srcObject.getAudioTracks()); }
+          const tracks = [...mediaState.camStream.getTracks(), ...mediaState.micStream.getTracks()]; if(remoteVideoEl.srcObject) tracks.push(...remoteVideoEl.srcObject.getAudioTracks());
           const streamToRecord = new MediaStream(tracks);
-          mediaState.recorder = new MediaRecorder(streamToRecord, { mimeType: 'video/webm' });
-          const chunks = [];
+          mediaState.recorder = new MediaRecorder(streamToRecord, { mimeType: 'video/webm' }); const chunks = [];
           mediaState.recorder.ondataavailable = e => chunks.push(e.data);
-          mediaState.recorder.onstop = () => {
-            const blob = new Blob(chunks, { type: 'video/webm' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `imboxo-live-${new Date().toISOString()}.webm`;
-            a.click();
-            URL.revokeObjectURL(url);
-          };
-          mediaState.recorder.start();
-          mediaState.recording = true;
-          btnRecord.setAttribute('aria-pressed', true);
-          showToast("Recording started.");
+          mediaState.recorder.onstop = () => { const blob = new Blob(chunks, { type: 'video/webm' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `imboxo-live-${new Date().toISOString()}.webm`; a.click(); URL.revokeObjectURL(a.href); };
+          mediaState.recorder.start(); mediaState.recording = true; btnRecord.setAttribute('aria-pressed', true); showToast("Recording started.");
         }
-        function stopRecording() {
-          if (mediaState.recorder) mediaState.recorder.stop();
-          mediaState.recording = false;
-          btnRecord.setAttribute('aria-pressed', false);
-          showToast("Recording stopped. Download will start.");
-        }
+        function stopRecording() { if (mediaState.recorder) mediaState.recorder.stop(); mediaState.recording = false; btnRecord.setAttribute('aria-pressed', false); showToast("Recording stopped. Download will start."); }
         
-        const btnEndNew = document.getElementById('btnEndNew');
-        if(btnEndNew) btnEndNew.onclick = () => { endModal.classList.add('open'); document.getElementById('btnEndForAll').style.display = state.role === 'host' ? 'block' : 'none'; }
-        document.getElementById('btnEndCancel').onclick = () => endModal.classList.remove('open'); document.getElementById('btnLeave').onclick = () => { if(roomRef) roomRef.off(); if(pc) pc.close(); location.href = location.pathname; }; document.getElementById('btnEndForAll').onclick = () => { if(roomRef) { roomRef.remove().then(() => { location.href = location.pathname; }); } else { location.href = location.pathname; } };
+        document.getElementById('btnEndNew').onclick = () => { endModal.classList.add('open'); document.getElementById('btnEndForAll').style.display = state.role === 'host' ? 'block' : 'none'; }
+        document.getElementById('btnEndCancel').onclick = () => endModal.classList.remove('open');
+        document.getElementById('btnLeave').onclick = () => { if(roomRef) roomRef.off(); if(pc) pc.close(); location.href = location.pathname; };
+        document.getElementById('btnEndForAll').onclick = () => { if(roomRef) roomRef.remove().then(() => location.href=location.pathname); else location.href=location.pathname; };
         
-        // --- This is the main startup logic ---
         (async () => {
           try {
-            if (state.roomId) {
-              await joinRoom(state.roomId);
-            } else {
-              setRole('host');
-              await initPermissions(); // Host gets permissions on load
-            }
-
-            // The rest of the setup
-            mountLayoutGallery('studioGallery', false);
-            mountLayoutGallery('cinemaGallery', true);
-            mountLayoutGallery('shopGallery', false);
-            renderLayout();
-            loadFilm(films[0]);
-            makeCardsCollapsible();
-            if (state.role === 'host') {
-              renderHostCatalog();
-              renderLiveCollection();
-            }
-            
-            const chatToggles = document.querySelectorAll('.chat-overlay-toggle-input');
-            chatToggles.forEach(toggle => {
-                toggle.checked = state.chatOverlayVisible;
-                toggle.addEventListener('change', handleChatOverlayToggle);
-            });
-            
-            // Listen for messages from the host
-            if (state.roomId) {
-                const messagesRef = fbDb.ref(`rooms/${state.roomId}/messages`);
-                messagesRef.on('child_added', snapshot => {
-                    const message = snapshot.val();
-                    if (message) {
-                        bus.dispatchEvent(new CustomEvent('m',{detail:message}));
-                    }
-                });
-            }
-
-          } catch (err) {
-            console.error("Failed to initialize the application:", err);
-            showToast("A critical error occurred during setup.");
-          }
+            if (state.roomId) await joinRoom(state.roomId);
+            else { setRole('host'); await initPermissions(); }
+            mountLayoutGallery('studioGallery', false); mountLayoutGallery('cinemaGallery', true); mountLayoutGallery('shopGallery', false);
+            renderLayout(); loadFilm(films[0]); makeCardsCollapsible();
+            if (state.role === 'host') { renderHostCatalog(); renderLiveCollection(); }
+            document.querySelectorAll('.chat-overlay-toggle-input').forEach(t => { t.checked = state.chatOverlayVisible; t.addEventListener('change', handleChatOverlayToggle); });
+            if (state.roomId) { fbDb.ref(`rooms/${state.roomId}/messages`).on('child_added', s => { if (s.val()) bus.dispatchEvent(new CustomEvent('m',{detail:s.val()})); }); }
+          } catch (err) { console.error("Initialization failed:", err); showToast("A critical error occurred."); }
         })();
         navigator.mediaDevices.addEventListener('devicechange', getDevices);
-
-    }); // --- END OF THE DOMContentLoaded WRAPPER ---
+    });
   </script>
 </body>
 </html>
-

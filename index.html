@@ -709,9 +709,7 @@
             clearStage(stageCinema);
             const guestIsVisible = pc?.connectionState === 'connected';
 
-            // --- FINAL FIX: Role-aware PiP ---
             pipVideoEl.srcObject = (state.role === 'host') ? mediaState.camStream : remoteVideoEl.srcObject;
-            
             pipVideoEl.play().catch(e => console.warn("PiP play failed", e));
             hostPiP.innerHTML = '';
             hostPiP.appendChild(pipVideoEl);
@@ -794,9 +792,7 @@
                 }
             });
             renderLayout();
-            if (state.role === 'host') {
-                sendStateUpdate();
-            }
+            sendStateUpdate();
         }
 
         function layoutThumb(type, cinema=false) {
@@ -888,6 +884,9 @@
                 if(syncStateEl) syncStateEl.textContent='Ready';
                 renderLayout();
                 send({ type: 'film_selected', film: { id: f.id, url: f.url, thumb: f.thumb, title: f.title } });
+                if (state.role === 'host' && roomRef) {
+                  roomRef.child('film').set({ id: f.id, url: f.url, thumb: f.thumb, title: f.title });
+                }
             } catch(e){
                 console.warn(e);
                 filmThumb.classList.remove('is-ready');
@@ -936,19 +935,25 @@
                 return;
             }
             if(state.role === 'guest') {
-                if(m.type==='play'){ gentlySeekTo(m.pos + (performance.now()-m.t)/1000); videoEl.play(); setupOutputAudioProcessing(); }
+                if(m.type==='play'){
+                    gentlySeekTo(m.pos + (performance.now()-m.t)/1000);
+                    if (videoEl.muted) videoEl.muted = false;
+                    videoEl.play().catch(e => {
+                        console.warn("Guest play failed, likely autoplay", e);
+                        showToast("Tap the film to unmute and start playback.");
+                    });
+                    setupOutputAudioProcessing();
+                }
                 if(m.type==='pause'){ gentlySeekTo(m.pos); videoEl.pause(); }
                 if(m.type==='seek'){ gentlySeekTo(m.pos); }
                 if(m.type==='tick' && !videoEl.paused){ gentlySeekTo(m.pos + (performance.now()-m.t)/1000); }
                 if(m.type === 'film_selected') { loadFilm(m.film); }
                 if(m.type==='state_update') {
-                    // Apply all state changes from the host
                     setMode(m.mode);
                     state.layout = m.layout;
                     state.replaceHost = m.replaceHost;
                     state.hostPiP = m.hostPiP;
                     
-                    // Update UI elements to match
                     chkReplaceHost.checked = m.replaceHost;
                     chkHostPiP.checked = m.hostPiP;
                     pipRow.style.display = m.replaceHost ? 'inline-flex' : 'none';

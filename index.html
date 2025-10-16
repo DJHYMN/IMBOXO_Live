@@ -438,9 +438,9 @@
               </div>
             </div>
             <div class="card">
-              <div class="section-title">Playback</div>
-              <div class="row"> <button class="btn" id="btnPlay">Play</button> <button class="btn" id="btnSeekBack">-10s</button> <button class="btn" id="btnSeekFwd">+10s</button> <span class="pill">Sync: <span id="syncState" style="margin-left:6px">Idle</span></span> </div>
-            </div>
+                          <div class="section-title">Playback</div>
+                          <div class="row"> <button class="btn" id="btnPlay">Play</button> <button class="btn" id="btnSeekBack">-10s</button> <button class="btn" id="btnSeekFwd">+10s</button> <button class="btn only-host" id="btnResync">Resync All</button> <span class="pill">Sync: <span id="syncState" style="margin-left:6px">Idle</span></span> </div>
+                        </div>
             <div class="card">
               <div class="section-title">Cinema Layout</div>
               <div id="cinemaGallery" class="layout-gallery" aria-label="Cinema Layouts"></div>
@@ -911,6 +911,19 @@
         }
 
         const filmThumb=document.getElementById('filmThumb'), filmStatus=document.getElementById('filmStatus'), syncStateEl=document.getElementById('syncState'), chkReplaceHost=document.getElementById('chkReplaceHost'), chkHostPiP=document.getElementById('chkHostPiP'), pipRow=document.getElementById('pipRow'), btnPlay = document.getElementById('btnPlay'), btnChangeFilm = document.getElementById('btnChangeFilm');
+        const btnResync = document.getElementById('btnResync');
+
+        btnResync.onclick = () => {
+                  if (state.role === 'host' && state.filmLoaded) {
+                    send({
+                      type: 'force_sync',
+                      pos: videoEl.currentTime,
+                      t: performance.now(),
+                      isPlaying: state.playing // ✨ FIX: Include the current playback state
+                    });
+                    showToast("Resync signal sent to all guests.");
+                  }
+                };
         const films = [
           {id:'f1', title:'Big Buck Bunny', url:'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4', thumb:'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c5/Big_buck_bunny_poster_big.jpg/800px-Big_buck_bunny_poster_big.jpg'},
           {id:'f2', title:'Sintel', url:'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4', thumb:'https://static.wixstatic.com/media/d8a03e_98dfdf4401a4478bb16361dd68f56c11~mv2.png'},
@@ -1005,42 +1018,54 @@
                         return;
                     }
                     if(state.role === 'guest') {
-                        if(m.type==='play'){
-                            gentlySeekTo(m.pos + (performance.now()-m.t)/1000);
-                            if (videoEl.muted) videoEl.muted = false;
-                            videoEl.play().catch(e => {
-                                console.warn("Guest play failed, likely autoplay", e);
-                                showToast("Tap the film to unmute and start playback.");
-                            });
-                            setupOutputAudioProcessing();
+                        // ✨ REWRITTEN LOGIC: All major host actions now force an immediate time AND state sync.
+                        if(m.type==='play' || m.type==='seek' || m.type==='pause' || m.type==='force_sync'){
+                            // Step 1: Calculate the host's true current time, down to the millisecond, accounting for latency.
+                            const targetTime = m.pos + (performance.now() - m.t) / 1000;
+                            
+                            // Step 2: Unconditionally force the guest's video to that exact spot. This is the "instant fast forward".
+                            videoEl.currentTime = targetTime;
+                            
+                            // Step 3: Determine the new state (PLAYING or PAUSED) based on the host's command.
+                            const shouldBePlaying = (m.type === 'play') || (m.type === 'force_sync' && m.isPlaying);
+
+                            // Step 4: Apply the new state.
+                            if (shouldBePlaying) {
+                                if (videoEl.muted) videoEl.muted = false;
+                                videoEl.play().catch(e => {
+                                    console.warn("Guest play failed, likely autoplay", e);
+                                    showOverlayMessage({user: 'System', text: "Tap the film to unmute and start playback."});
+                                });
+                                if(!mediaState.outputAudioSetup) setupOutputAudioProcessing();
+                            } else {
+                                videoEl.pause();
+                            }
                         }
-                        if(m.type==='pause'){ gentlySeekTo(m.pos); videoEl.pause(); }
-                        if(m.type==='seek'){ gentlySeekTo(m.pos); }
+                        
+                        // The 'tick' is a gentle nudge to correct minor drift between major actions.
                         if(m.type==='tick'){ gentlySeekTo(m.pos + (performance.now()-m.t)/1000); }
+
                         if(m.type === 'film_selected') { loadFilm(m.film); }
+
                         if(m.type==='state_update') {
-                            // Apply all state changes from the host
                             setMode(m.mode);
                             state.layout = m.layout;
                             state.replaceHost = m.replaceHost;
                             state.hostPiP = m.hostPiP;
                             
-                            // Update UI elements to match
                             chkReplaceHost.checked = m.replaceHost;
                             chkHostPiP.checked = m.hostPiP;
                             pipRow.style.display = m.replaceHost ? 'inline-flex' : 'none';
                             
                             autoSetLayout(m.layout);
 
-                            // ✨ FIX: Handle the initial video state from the host
                             if (m.video) {
-                                if (state.film?.id !== m.video.film?.id) {
-                                    loadFilm(m.video.film);
-                                }
-                                videoEl.currentTime = m.video.currentTime;
+                                if (state.film?.id !== m.video.film?.id) { loadFilm(m.video.film); }
+                                const elapsed = (performance.now() - (m.video.t || performance.now())) / 1000;
+                                videoEl.currentTime = m.video.currentTime + elapsed;
                                 if (m.video.isPlaying) {
                                     videoEl.play().catch(e=>console.warn(e));
-                                    setupOutputAudioProcessing();
+                                    if(!mediaState.outputAudioSetup) setupOutputAudioProcessing();
                                 } else {
                                     videoEl.pause();
                                 }
@@ -1506,12 +1531,11 @@
                                   video: {
                                       isPlaying: state.playing,
                                       currentTime: videoEl.currentTime,
-                                      film: state.film
+                                      film: state.film,
+                                      t: performance.now() // ✨ FINAL FIX: Add timestamp for perfect initial sync
                                   }
                               });
 
-                              // ✨ FIX: This line was incorrectly forcing the host's layout. It has been removed.
-                              // autoSetLayout('split');
                           } else { // Guest
                               showToast("Connected to host!");
                           }
@@ -1526,7 +1550,6 @@
                       renderLayout();
                     };
                 }
-
         async function joinRoom(roomId) {
             setRole('guest');
             await initPermissions();

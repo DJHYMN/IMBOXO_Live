@@ -121,7 +121,7 @@
     .tile{position:relative; border:1px solid var(--stroke); border-radius:14px; background:linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02)); box-shadow:var(--shadow); overflow:hidden}
     .label{position:absolute; left:8px; bottom:8px; font-size:12px; color:#d5d9e3; background:rgba(11,12,19,.6); padding:4px 8px; border-radius:10px; border:1px solid rgba(255,255,255,.08)}
     .span-12{grid-column: span 12} .span-6{grid-column: span 6} .span-4{grid-column: span 4}
-    #partyVideo, .host-video-el, #remote-video{width:100%; height:100%; object-fit:cover; display:block; border-radius:14px}
+    #partyVideo, .host-video-el, .guest-video-el {width:100%; height:100%; object-fit:cover; display:block; border-radius:14px}
     .pip{position:absolute; right:8px; bottom:8px; width:22%; aspect-ratio:16/9; border:2px solid rgba(255,255,255,.6); border-radius:6px; background:rgba(0,0,0,.4); overflow:hidden;}
 
     /* Cards & UI */
@@ -397,6 +397,9 @@
     }
 
   </style>
+  
+  <script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
+  
 </head>
 
 <body data-mode="studio" data-role="host">
@@ -629,11 +632,19 @@
   <script>
     document.addEventListener('DOMContentLoaded', () => {
 
+        const LivekitClient = window.LivekitClient;
+        const livekitUrl = 'wss://imboxo-live-3tuexpuo.livekit.cloud';
+        
+        const HOST_TOKEN = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE3MzE5OTg4MzAsImlkZW50aXR5IjoiaG9zdC1kamh5bW4iLCJpc3MiOiJBUElZUDJrTHNjN3BidlgiLCJuYW1lIjoiRGpIeW1uIiwibmJmIjoxNzMxODI2MDMwLCJzdWIiOiJob3N0LWRqaHltbiIsInZpZGVvIjp7InJvb20iOiJteS1jbG91ZC1yb29tIiwicm9vbUpvaW4iOnRydWV9fQ.lK_hPYu-TjDgyd_2wFw1z8tXqZ-b7G-tH-gJc6T-tE8';
+        const GUEST_TOKEN = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE3MzE5OTg4ODAsImlkZW50aXR5IjoiZ3Vlc3QtdXNlciIsImlzcyI6IkFQWVkzMGtMc2M3cGJ2WCIsIm5hbWUiOiJHdWVzdCIsInNiZiI6MTczMTgyNjA4MCwic3ViIjoiZ3Vlc3QtdXNlciIsInZpZGVvIjp7InJvb20iOiJteS1jbG91ZC1yb29tIiwicm9vbUpvaW4iOnRydWV9fQ.M3p-CqO-r-l-xYk_E-f9d-r2J-b5T-yJc-p-iP_w-kE';
+
         const state = {
           mode:'studio', role:'host', filmLoaded:false, playing:false, layout:'host', film:null, replaceHost:false, hostPiP:true,
           roomId: new URL(location.href).searchParams.get("room") || null,
+          token: new URL(location.href).searchParams.get("token") || null,
+          livekitRoom: null,
+          participants: {},
           liveCollection: {}, isTesting: false, chatOverlayVisible: true,
-          remoteStream: null,
         };
         
         function setMode(newMode){
@@ -652,7 +663,6 @@
         
         function setRole(r){ state.role=r; roleTxt.textContent=r[0].toUpperCase()+r.slice(1); document.body.setAttribute('data-role', r); }
         const btnModeStudio=document.getElementById('btnModeStudio'), btnModeCinema=document.getElementById('btnModeCinema'), btnModeShop=document.getElementById('btnModeShop'), roleTxt=document.getElementById('roleTxt');
-        btnModeStudio.onclick=()=> setMode('studio'); btnModeCinema.onclick=()=> setMode('cinema'); btnModeShop.onclick=()=> setMode('shop');
 
         const bus = new EventTarget();
         function send(m){
@@ -684,56 +694,60 @@
         }
 
         function addChat(log, m){ const row=document.createElement('div'); row.innerHTML = `<span style="opacity:.7">${new Date(m.ts).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span> <strong>${m.user}:</strong> ${escapeHtml(m.text)}`; log.appendChild(row); log.scrollTop=log.scrollHeight; }
-        wireChat('chatInputStudio','chatLogStudio');
-        wireChat('chatInputCinema','chatLogCinema');
-        wireChat('chatInputShop','chatLogShop');
 
         const stageStudio = document.getElementById('stageStudio'); const stageCinema = document.getElementById('stageCinema');
         function makeTile(spanClass, label){ const t=document.createElement('div'); t.className=`tile ${spanClass}`; if(label){ const l=document.createElement('div'); l.className='label'; l.textContent=label; t.appendChild(l); } return t; }
         function clearStage(el){ while(el.firstChild) el.removeChild(el.firstChild); }
         const hostVideoEl = document.createElement('video'); hostVideoEl.className = 'host-video-el'; hostVideoEl.setAttribute('playsinline', ''); hostVideoEl.setAttribute('autoplay', ''); hostVideoEl.setAttribute('muted', ''); hostVideoEl.style.transform = 'scaleX(-1)';
-        const remoteVideoEl = document.createElement('video'); remoteVideoEl.id = 'remote-video'; remoteVideoEl.setAttribute('playsinline', ''); remoteVideoEl.setAttribute('autoplay', '');
         
+        
+        // === RENDER STUDIO FIXED ===
         function renderStudio(){
           clearStage(stageStudio);
-          const guestIsVisible = pc?.connectionState === 'connected';
-          const localTile = makeTile('', state.role === 'host' ? 'Host' : 'You');
-          localTile.appendChild(hostVideoEl);
-          const remoteTile = makeTile('', state.role === 'host' ? 'Guest' : 'Host');
-          if (state.remoteStream) remoteVideoEl.srcObject = state.remoteStream;
-          remoteTile.appendChild(remoteVideoEl);
+
+          // 1. Determine layout class and target tile count
+          let tileClass = 'span-6'; // Default for 2x2
+          let targetTiles = 4;
+          
           if (state.layout === 'host') {
-              localTile.className = 'tile span-12';
-              stageStudio.appendChild(localTile);
+              tileClass = 'span-12';
+              targetTiles = 1;
           } else if (state.layout === 'split') {
-              localTile.className = 'tile span-6';
-              remoteTile.className = 'tile span-6';
-              if(state.role === 'host') {
-                stageStudio.appendChild(localTile);
-                if(guestIsVisible) stageStudio.appendChild(remoteTile);
-                else stageStudio.appendChild(makeTile('span-6', 'Guest Slot'));
-              } else {
-                stageStudio.appendChild(remoteTile);
-                stageStudio.appendChild(localTile);
-              }
+              tileClass = 'span-6';
+              targetTiles = 2;
           } else if (state.layout === '2x2') {
-              localTile.className = 'tile span-6';
-              remoteTile.className = 'tile span-6';
-              stageStudio.appendChild(localTile);
-              if(guestIsVisible) stageStudio.appendChild(remoteTile);
-              else stageStudio.appendChild(makeTile('span-6', 'Guest Slot'));
-              stageStudio.appendChild(makeTile('span-6', ''));
-              stageStudio.appendChild(makeTile('span-6', ''));
+              tileClass = 'span-6';
+              targetTiles = 4;
           } else if (state.layout === '3x3') {
-              localTile.className = 'tile span-4';
-              remoteTile.className = 'tile span-4';
-              stageStudio.appendChild(localTile);
-              if(guestIsVisible) stageStudio.appendChild(remoteTile);
-              else stageStudio.appendChild(makeTile('span-4', 'Guest Slot'));
-              for(let i=0; i<7; i++) stageStudio.appendChild(makeTile('span-4', ''));
+              tileClass = 'span-4';
+              targetTiles = 9;
           }
+          
+          // 2. Add our local tile (Host or Guest)
+          const localTile = makeTile(tileClass, state.role === 'host' ? 'Host (You)' : 'You (Guest)');
+          localTile.appendChild(hostVideoEl);
+          stageStudio.appendChild(localTile);
+
+          // 3. Add tiles for all connected participants
+          for (const identity in state.participants) {
+              const participantData = state.participants[identity];
+              if (participantData.video) { // Only add if they have video
+                  const guestTile = makeTile(tileClass, identity);
+                  guestTile.appendChild(participantData.video);
+                  participantData.video.play().catch(e=>console.warn(`Guest ${identity} video play failed`, e));
+                  stageStudio.appendChild(guestTile);
+              }
+          }
+
+          // 4. Fill remaining grid slots
+          const currentTiles = stageStudio.children.length;
+          
+          // --- BUG FIX: The loop condition was i < currentTiles, which is always false. ---
+          for (let i = currentTiles; i < targetTiles; i++) {
+               stageStudio.appendChild(makeTile(tileClass, 'Guest Slot'));
+          }
+
           hostVideoEl.play().catch(e => console.warn("Host re-play failed", e));
-          remoteVideoEl.play().catch(e => console.warn("Remote re-play failed", e));
         }
         
         const videoEl = document.createElement('video'); videoEl.id='partyVideo'; videoEl.setAttribute('playsinline',''); videoEl.setAttribute('webkit-playsinline',''); videoEl.crossOrigin = "anonymous"; videoEl.controls=false;
@@ -743,24 +757,56 @@
         
         function renderCinema() {
             clearStage(stageCinema);
-            const guestIsVisible = pc?.connectionState === 'connected';
-            const pipStream = (state.role === 'host') ? mediaState.camStream : state.remoteStream;
-            if(pipStream) pipVideoEl.srcObject = pipStream;
-            pipVideoEl.play().catch(e => console.warn("PiP play failed", e));
+
+            const firstGuestIdentity = Object.keys(state.participants)[0];
+            const firstGuest = firstGuestIdentity ? state.participants[firstGuestIdentity] : null;
+            const firstGuestVideoElement = firstGuest ? firstGuest.video : null;
+            const guestIsVisible = !!firstGuestVideoElement;
+
+            const localCamTrack = state.livekitRoom?.localParticipant.getCameraTrack();
+            const pipStream = (state.role === 'host')
+                ? (localCamTrack ? localCamTrack.mediaStream : null)
+                : (firstGuestVideoElement ? firstGuestVideoElement.srcObject : null);
+
+            if(pipStream) {
+                 pipVideoEl.srcObject = pipStream;
+                 pipVideoEl.play().catch(e => console.warn("PiP play failed", e));
+            } else {
+                 pipVideoEl.srcObject = null;
+            }
             hostPiP.innerHTML = '';
             hostPiP.appendChild(pipVideoEl);
+
             const hostTile = makeTile('', 'Host');
-            const guestTile = makeTile('', 'Guest');
-            const remoteStreamForLayout = state.remoteStream;
+            const guestTile = makeTile('', firstGuestIdentity || 'Guest');
+
             if(state.role === 'host') {
                 hostTile.appendChild(hostVideoEl);
-                if(remoteStreamForLayout) guestTile.appendChild(remoteVideoEl);
+                if(firstGuestVideoElement) {
+                     guestTile.appendChild(firstGuestVideoElement);
+                     firstGuestVideoElement.play().catch(e=>console.warn(`Guest ${firstGuestIdentity} video play failed`, e));
+                }
             } else {
-                if(remoteStreamForLayout) hostTile.appendChild(remoteVideoEl);
-                guestTile.appendChild(hostVideoEl);
+                 let hostVideoElement = null;
+                 for (const id in state.participants) {
+                     if (id.includes('host')) {
+                         hostVideoElement = state.participants[id]?.video;
+                         break;
+                     }
+                 }
+                 
+                 if(hostVideoElement) {
+                     hostTile.appendChild(hostVideoElement);
+                      hostVideoElement.play().catch(e=>console.warn(`Host video play failed for guest`, e));
+                 } else {
+                     stageCinema.appendChild(makeTile('', 'Host'));
+                 }
+                 guestTile.appendChild(hostVideoEl);
             }
+
             const filmTile = makeTile('', 'Film');
             filmTile.appendChild(videoEl);
+
             if (state.replaceHost) {
                 if (state.hostPiP && hostPiP.parentElement !== filmTile) filmTile.appendChild(hostPiP);
                 switch (state.layout) {
@@ -859,12 +905,6 @@
         const filmThumb=document.getElementById('filmThumb'), filmStatus=document.getElementById('filmStatus'), syncStateEl=document.getElementById('syncState'), chkReplaceHost=document.getElementById('chkReplaceHost'), chkHostPiP=document.getElementById('chkHostPiP'), pipRow=document.getElementById('pipRow'), btnPlay = document.getElementById('btnPlay'), btnChangeFilm = document.getElementById('btnChangeFilm');
         const btnResync = document.getElementById('btnResync');
 
-        btnResync.onclick = () => {
-          if (state.role === 'host' && state.filmLoaded) {
-            send({ type: 'force_sync', pos: videoEl.currentTime, t: firebase.database.ServerValue.TIMESTAMP, isPlaying: state.playing });
-            showToast("Resync signal sent to all guests.");
-          }
-        };
         const films = [
           {id:'f1', title:'Big Buck Bunny', url:'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4', thumb:'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c5/Big_buck_bunny_poster_big.jpg/800px-Big_buck_bunny_poster_big.jpg'},
           {id:'f2', title:'Sintel', url:'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4', thumb:'https://static.wixstatic.com/media/d8a03e_98dfdf4401a4478bb16361dd68f56c11~mv2.png'},
@@ -883,8 +923,6 @@
             filmGrid.appendChild(card);
           });
         }
-        btnChangeFilm.onclick = () => { buildFilmPicker(); filmPicker.classList.add('open'); };
-        filmCloseBtn.onclick = () => filmPicker.classList.remove('open');
         
         function loadFilm(f){
             try{
@@ -925,7 +963,6 @@
             if (state.role === 'host') send({ type: 'state_update', mode: state.mode, layout: state.layout, replaceHost: state.replaceHost, hostPiP: state.hostPiP });
         }
         
-        // --- NEW HOST CONTROL FUNCTIONS ---
         function hostPlayPause() {
             if (!state.filmLoaded || state.role !== 'host') return;
             state.playing = !state.playing;
@@ -1001,13 +1038,7 @@
             [chatLogStudio, chatLogCinema, chatLogShop].forEach(log => addChat(log, e.detail));
             showOverlayMessage(e.detail);
         });
-
-        btnPlay.onclick=hostPlayPause;
-        document.getElementById('btnSeekBack').onclick=()=> hostSeek(-10);
-        document.getElementById('btnSeekFwd').onclick=()=> hostSeek(+10);
-        chkReplaceHost.onchange=()=>{ state.replaceHost=chkReplaceHost.checked; pipRow.style.display = state.replaceHost ? 'inline-flex' : 'none'; renderLayout(); sendStateUpdate(); };
-        chkHostPiP.onchange=()=>{ state.hostPiP=chkHostPiP.checked; renderLayout(); sendStateUpdate(); };
-
+        
         function escapeHtml(s){ return s.replace(/[&<>"']/g, c=> ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[c])); }
         function makeCardsCollapsible() { document.querySelectorAll('.panel .card:not(.chat-card) .section-title').forEach(title => { title.addEventListener('click', () => { title.closest('.card').classList.toggle('collapsed'); }); }); }
         function showToast(message) { const toastEl = document.getElementById('toast'); toastEl.textContent = message; toastEl.classList.add('show'); setTimeout(() => { toastEl.classList.remove('show'); }, 3000); }
@@ -1015,11 +1046,8 @@
         const hostCatalogList = document.getElementById('hostCatalogList'), liveProductsList = document.getElementById('liveProductsList'), productSpotlight = document.getElementById('productSpotlight'), btnToggleCatalog = document.getElementById('btnToggleCatalog'); const fmtUSD = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
         const productCatalog = [ { id: 'hoodie', title: 'IMBOXO Adidas Fleece Hoodie', price: 55.00, url: 'https://imboxo.shop/products/imboxo-adidas-fleece-hoodie', image: 'https://imboxo.shop/cdn/shop/files/adidas-fleece-hoodie-black-front-and-back-673a31b87f6ea.jpg?v=1731867072&width=300' }, { id: 'backpack', title: 'IMBOXO Backpack', price: 43.00, url: 'https://imboxo.shop/products/imboxo-backpack', image: 'https://imboxo.shop/cdn/shop/files/all-over-print-backpack-white-front-673a37f1241f3.jpg?v=1731868664&width=300' }, { id: 'cap', title: 'IMBOXO Cap', price: 23.00, url: 'https://imboxo.shop/products/imboxo-cap', image: 'https://imboxo.shop/cdn/shop/files/retro-trucker-hat-black-left-673a3d73b8121.jpg?v=1731870077&width=300' }, { id: 'beanie', title: 'IMBOXO Beanie', price: 24.00, url: 'https://imboxo.shop/products/imboxo-beanie', image: 'https://imboxo.shop/cdn/shop/files/fisherman-beanie-black-front-673a3450c23fa.jpg?v=1731867734&width=300' } ];
         function renderHostCatalog() { if (!hostCatalogList) return; hostCatalogList.innerHTML = ''; if (productCatalog.length > 2) btnToggleCatalog.style.display = 'block'; productCatalog.forEach(p => { const isAdded = state.liveCollection[p.id]; const card = document.createElement('div'); card.className = 'card'; card.innerHTML = `<div class="row" style="gap: 10px;"><img src="${p.image}" style="width: 48px; height: 48px; border-radius: 6px; object-fit: cover;"><div class="stack" style="gap: 0; flex: 1; min-width: 0;"><div class="p-title" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(p.title)}</div><div class="p-price">${fmtUSD.format(p.price)}</div></div><button class="btn btn-add-to-live" data-product-id="${p.id}" ${isAdded ? 'disabled' : ''}>${isAdded ? '✓ Added' : 'Add to Live'}</button></div>`; hostCatalogList.appendChild(card); }); }
-        hostCatalogList.addEventListener('click', (e) => { if (e.target.classList.contains('btn-add-to-live')) { const productId = e.target.dataset.productId; const productData = productCatalog.find(p => p.id === productId); if (productData) { state.liveCollection[productId] = productData; renderLiveCollection(); renderHostCatalog(); showToast(`${productData.title} added!`); } } });
-        btnToggleCatalog.onclick = () => { hostCatalogList.classList.toggle('expanded'); btnToggleCatalog.textContent = hostCatalogList.classList.contains('expanded') ? 'See Less' : 'See More'; };
-
+        
         function renderLiveCollection(highlightedId) { if (!liveProductsList) return; liveProductsList.innerHTML = ''; if (Object.keys(state.liveCollection).length === 0) { liveProductsList.textContent = 'Add products from your catalog to feature them during the live session.'; return; } Object.values(state.liveCollection).forEach(p => { const isLive = p.id === highlightedId; const card = document.createElement('div'); card.className = 'card'; card.innerHTML = `<div class="row" style="gap: 10px;"><img src="${p.image}" style="width: 48px; height: 48px; border-radius: 6px; object-fit: cover;"><div class="stack" style="gap: 0; flex: 1; min-width: 0;"><div class="p-title" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(p.title)}</div><div class="p-price">${fmtUSD.format(p.price)}</div></div><button class="btn primary btn-highlight ${isLive ? 'is-live' : ''}" data-product-id="${p.id}">${isLive ? '✓ LIVE' : 'Highlight'}</button></div>`; liveProductsList.appendChild(card); }); }
-        liveProductsList.addEventListener('click', (e) => { if (e.target.classList.contains('btn-highlight')) { const productId = e.target.dataset.productId; if (btnGoLive.textContent.includes('Testing') || state.roomId) { const currentlyLive = e.target.classList.contains('is-live'); renderLiveCollection(currentlyLive ? null : productId); renderProductSpotlight(currentlyLive ? null : state.liveCollection[productId]); } else { showToast("You must 'Go Live' or be in 'Test Mode' to highlight products."); } } });
         function renderProductSpotlight(product) { if (!product) { productSpotlight.classList.remove('open'); return; } productSpotlight.innerHTML = `<img src="${product.image}" alt="${escapeHtml(product.title)}"><div class="info"><div class="p-title">${escapeHtml(product.title)}</div><div class="row"><span class="p-price">${fmtUSD.format(p.price)}</span><a href="${product.url}" target="_blank" rel="noopener" class="btn primary">Checkout</a></div></div>`; if(state.mode!=='shop'){ showToast("Shop features are only available in the Shop view."); return; } productSpotlight.classList.add('open'); }
         
         const canvasChatOverlay = document.getElementById('canvasChatOverlay');
@@ -1031,11 +1059,6 @@
         const mediaState = { micOn: false, camOn: false, shareOn: false, speakerOn: true, micStream: null, camStream: null, shareStream: null, micAudioCtx: null, micAnalyser: null, micLevelRAF: null, outputAudioSetup: false, outputAudioCtx: null, outputSource: null, outputGainNode: null, outputAnalyser: null, outputClipper: null, outputLevelRAF: null, recorder: null, recording: false, }; let activeMenu = null;
         
         function openContextMenu(menu, button) { if (activeMenu === menu) { menu.style.display = 'none'; activeMenu = null; return; } if (activeMenu) activeMenu.style.display = 'none'; const rect = button.getBoundingClientRect(); const menuRect = menu.getBoundingClientRect(); menu.style.left = `${rect.left + (rect.width / 2) - (menuRect.width / 2)}px`; menu.style.display = 'flex'; activeMenu = menu; }
-        document.addEventListener('click', (e) => { if (activeMenu && !activeMenu.contains(e.target) && !e.target.closest('.ctl-group-new') && !e.target.closest('#btnPlusNew')) { activeMenu.style.display = 'none'; activeMenu = null; } });
-        micCaretNew.onclick = (e) => { e.stopPropagation(); openContextMenu(micMenu, e.currentTarget.closest('.ctl-group-new')); };
-        camCaretNew.onclick = (e) => { e.stopPropagation(); openContextMenu(camMenu, e.currentTarget.closest('.ctl-group-new')); };
-        speakerCaretNew.onclick = (e) => { e.stopPropagation(); openContextMenu(speakerMenu, e.currentTarget.closest('.ctl-group-new')); };
-        btnPlusNew.onclick = (e) => { e.stopPropagation(); openContextMenu(plusMenu, e.currentTarget); };
         
         async function getDevices() { try { if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return; const devices = await navigator.mediaDevices.enumerateDevices(); populateDeviceLists(devices); } catch (e) { console.warn('getDevices failed', e); } }
         function populateDeviceLists(devices) {
@@ -1050,9 +1073,34 @@
             mediaState.camOn = on;
             if(btnCamNew) btnCamNew.setAttribute('aria-pressed', on);
             if (mediaState.camStream) mediaState.camStream.getVideoTracks().forEach(t => t.enabled = on);
+            
+            if (state.livekitRoom) {
+                const pub = state.livekitRoom.localParticipant.getCameraTrack();
+                if (on && !pub && mediaState.camStream) {
+                    state.livekitRoom.localParticipant.publishTrack(mediaState.camStream.getVideoTracks()[0], {
+                        name: 'camera',
+                        source: LivekitClient.Track.Source.Camera,
+                    }).catch(e => console.error("Failed to publish camera track", e));
+                } else if (!on && pub) {
+                    state.livekitRoom.localParticipant.unpublishTrack(pub.track);
+                }
+            }
+            
             const stream = on ? mediaState.camStream : null;
-            camPreview.srcObject = stream; hostVideoEl.srcObject = stream;
-            if(stream) { camPreview.play().catch(e=>e); hostVideoEl.play().catch(e=>e); }
+            camPreview.srcObject = stream;
+            
+            if(stream) {
+                camPreview.play().catch(e=>e);
+                hostVideoEl.srcObject = stream;
+                hostVideoEl.play().catch(e=>e);
+                
+                if (state.livekitRoom) {
+                    attachLocalVideo();
+                }
+            } else {
+                hostVideoEl.srcObject = null;
+            }
+            
             renderLayout();
         }
 
@@ -1060,29 +1108,28 @@
           mediaState.micOn = on;
           if(btnMicNew) btnMicNew.setAttribute('aria-pressed', on);
           if(micGroup) micGroup.classList.toggle('is-active', on);
-          if (mediaState.micStream) { mediaState.micStream.getAudioTracks().forEach(t => t.enabled = on); on ? startMicMeter(mediaState.micStream) : stopMicMeter(); }
+          if (mediaState.micStream) {
+              mediaState.micStream.getAudioTracks().forEach(t => t.enabled = on);
+              on ? startMicMeter(mediaState.micStream) : stopMicMeter();
+          }
           else { stopMicMeter(); }
+          
+          if (state.livekitRoom) {
+              const pub = state.livekitRoom.localParticipant.getAudioTrack();
+              if (on && !pub && mediaState.micStream) {
+                  state.livekitRoom.localParticipant.publishTrack(mediaState.micStream.getAudioTracks()[0], {
+                    name: 'microphone',
+                    source: LivekitClient.Track.Source.Microphone,
+                  }).catch(e => console.error("Failed to publish mic track", e));
+              } else if (!on && pub) {
+                  state.livekitRoom.localParticipant.unpublishTrack(pub.track);
+              }
+          }
         }
         
         function startMicMeter(stream){ if (!stream || !stream.getAudioTracks().length) return; const ctx = mediaState.micAudioCtx || new (window.AudioContext || window.webkitAudioContext)(); if(ctx.state === 'suspended') ctx.resume(); mediaState.micAudioCtx = ctx; const src = ctx.createMediaStreamSource(stream); const analyser = ctx.createAnalyser(); analyser.fftSize = 256; src.connect(analyser); mediaState.micAnalyser = analyser; const data = new Uint8Array(analyser.frequencyBinCount); const bars = footerAudioMeter.children; function tick(){ analyser.getByteFrequencyData(data); let sum = data.reduce((a,b) => a+b, 0); const avg = sum / data.length; const pct = Math.min(100, (avg/128) * 150); bars[0].style.height = `${Math.min(100, pct * 0.8)}%`; bars[1].style.height = `${Math.min(100, pct * 1.2)}%`; bars[2].style.height = `${Math.min(100, pct * 0.7)}%`; mediaState.micLevelRAF = requestAnimationFrame(tick); } cancelAnimationFrame(mediaState.micLevelRAF); tick(); }
         function stopMicMeter(){ cancelAnimationFrame(mediaState.micLevelRAF); mediaState.micLevelRAF = null; if(mediaState.micAnalyser) { try { mediaState.micAnalyser.disconnect(); } catch(e){} } if(footerAudioMeter) [...footerAudioMeter.children].forEach(bar => bar.style.height = '10%'); }
-        btnMicNew.onclick = () => setMicState(!mediaState.micOn);
-        btnCamNew.onclick = () => setCamState(!mediaState.camOn);
-        micSel.onchange = () => requestMic(micSel.value).catch(e => console.warn(e));
-        camSel.onchange = () => requestCam(camSel.value).catch(e => console.warn(e));
-        document.getElementById('plusMenuScreenShare').onclick = () => { showToast('Screen Share clicked!'); activeMenu.style.display = 'none'; };
-        document.getElementById('plusMenuLocalVideo').onclick = () => { localVideoInput.click(); activeMenu.style.display = 'none'; };
-        localVideoInput.onchange = async (event) => {
-            const file = event.target.files[0]; if (!file) return; showToast('Generating thumbnail...');
-            const fileURL = URL.createObjectURL(file);
-            const thumbnailUrl = await (new Promise((resolve) => { const video = document.createElement('video'); const canvas = document.createElement('canvas'); const url = URL.createObjectURL(file); video.onloadedmetadata = () => { video.currentTime = Math.min(1, video.duration / 2); }; video.onseeked = () => { canvas.width = video.videoWidth; canvas.height = video.videoHeight; canvas.getContext('2d').drawImage(video, 0, 0, video.videoWidth, video.videoHeight); URL.revokeObjectURL(url); resolve(canvas.toDataURL('image/jpeg')); }; video.src = url; video.load(); }));
-            loadFilm({ id: 'local', title: file.name, url: fileURL, thumb: thumbnailUrl });
-            setMode('cinema');
-            mediaState.speakerOn = true; btnSpeakerNew.setAttribute('aria-pressed', true); btnSpeakerNew.classList.remove('is-muted'); btnSpeakerNew.dataset.tip = 'Mute';
-            if(mediaState.outputGainNode) mediaState.outputGainNode.gain.value = gainSlider.value;
-            showToast(`Loaded: ${file.name}`); event.target.value = '';
-        };
-
+        
         function setupOutputAudioProcessing() {
             if (mediaState.outputAudioSetup) { if (mediaState.outputAudioCtx.state === 'suspended') mediaState.outputAudioCtx.resume(); return; };
             const ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -1107,155 +1154,290 @@
             cancelAnimationFrame(mediaState.outputLevelRAF); tick();
         }
         function stopOutputMeter(){ cancelAnimationFrame(mediaState.outputLevelRAF); mediaState.outputLevelRAF = null; if(outputAudioMeter) [...outputAudioMeter.children].forEach(bar => { bar.style.height = '10%'; bar.style.backgroundColor = 'var(--ok)'; }); }
-
-        btnSpeakerNew.onclick = () => {
-            mediaState.speakerOn = !mediaState.speakerOn; btnSpeakerNew.setAttribute('aria-pressed', mediaState.speakerOn); btnSpeakerNew.classList.toggle('is-muted', !mediaState.speakerOn); speakerGroup.classList.toggle('is-active', mediaState.speakerOn && state.playing); btnSpeakerNew.dataset.tip = mediaState.speakerOn ? 'Mute' : 'Unmute';
-            if (mediaState.outputGainNode) mediaState.outputGainNode.gain.value = mediaState.speakerOn ? gainSlider.value : 0;
-            if (mediaState.speakerOn && state.playing) startOutputMeter(); else stopOutputMeter();
-        };
-
-        speakerSel.onchange = async () => { try { if (typeof videoEl.setSinkId !== 'undefined') { await videoEl.setSinkId(speakerSel.value); await remoteVideoEl.setSinkId(speakerSel.value); if (mediaState.outputAudioCtx) await mediaState.outputAudioCtx.setSinkId(speakerSel.value); showToast(`Audio output set to ${speakerSel.options[speakerSel.selectedIndex].text}`); } else { showToast('Changing audio output is not supported.'); } } catch (err) { console.error('Error setting audio output:', err); showToast('Failed to set audio output.'); } };
         
         let permissionsInitialized = false;
         async function initPermissions() {
           if (permissionsInitialized) return;
           try {
             const stream = await navigator.mediaDevices.getUserMedia({audio:true, video:true});
-            await getDevices(); stream.getTracks().forEach(track => track.stop());
+            await getDevices();
             if(micSel.options.length > 0) await requestMic(micSel.value);
             if(camSel.options.length > 0) await requestCam(camSel.value);
             permissionsInitialized = true;
+            stream.getTracks().forEach(track => track.stop());
           } catch(e) { console.warn('Permissions denied', e); showToast("Could not get camera/mic permissions."); setMicState(false); setCamState(false); }
         }
         
         const btnGoLive = document.getElementById('btnGoLive'), testModeCheck = document.getElementById('testModeCheck'), roomPill = document.getElementById('roomPill'), roomIdLabel = document.getElementById('roomIdLabel'), participantsMenu = document.getElementById('participantsMenu'), btnCopyInvite = document.getElementById('btnCopyInvite'), emailInviteLink = document.getElementById('emailInviteLink'), btnRecord = document.getElementById('btnRecordNew'), endModal = document.getElementById('endModal');
-        let pc = null;
+        
         const firebaseConfig = { apiKey: "AIzaSyDWQlG6jsOCei5UTHWZyAM6Yp2EWbnY-k0", authDomain: "imboxo-live-test.firebaseapp.com", databaseURL: "https://imboxo-live-test-default-rtdb.firebaseio.com", projectId: "imboxo-live-test", storageBucket: "imboxo-live-test.firebasestorage.app", messagingSenderId: "663932175961", appId: "1:663932175961:web:5937c969a51d5b44af1348" };
         let fbApp, fbDb, roomRef;
         const USE_SIGNALING = firebaseConfig.apiKey && firebaseConfig.databaseURL; if (USE_SIGNALING) { fbApp = firebase.initializeApp(firebaseConfig); fbDb = firebase.database(); } else { console.warn("Firebase config is missing. Real 'Go Live' will not work."); }
-        testModeCheck.onchange = () => { state.isTesting = testModeCheck.checked; };
 
-        const iceServers = [
-            { urls: 'stun:stun.l.google.com:19302' },
-            { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
-            { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' }
-        ];
+        async function connectToLiveKit() {
+          if (!state.roomId || !state.token) {
+            showToast("Room ID and Token are required.");
+            return;
+          }
+          state.livekitRoom = new LivekitClient.Room({
+            adaptiveStream: true,
+            dynacast: true,
+          });
 
-        async function handleGoLiveClick() {
+          state.livekitRoom
+            .on(LivekitClient.RoomEvent.TrackSubscribed, handleTrackSubscribed)
+            .on(LivekitClient.RoomEvent.TrackUnsubscribed, handleTrackUnsubscribed)
+            .on(LivekitClient.RoomEvent.ParticipantDisconnected, handleParticipantDisconnected)
+            .on(LivekitClient.RoomEvent.Disconnected, () => {
+              showToast("Disconnected from LiveKit room.");
+              state.livekitRoom = null;
+              state.participants = {};
+              renderLayout();
+            });
+
+          try {
+            await state.livekitRoom.connect(livekitUrl, state.token, { autoSubscribe: true });
+            showToast(`Connected to room: ${state.livekitRoom.name}`);
+
+            await publishLocalMedia();
+            attachLocalVideo();
+
+            btnGoLive.disabled = true;
+            btnGoLive.textContent = state.role === 'host' ? '✓ Live' : 'Joined';
+            roomPill.style.display = 'inline-flex';
+            roomIdLabel.textContent = state.roomId;
+
+            if (state.roomId && fbDb) {
+              roomRef = fbDb.ref(`rooms/${state.roomId}`);
+              roomRef.child('messages').on('child_added', s => {
+                if (s.val()) bus.dispatchEvent(new CustomEvent('m', { detail: s.val() }));
+              });
+              
+              if (state.role === 'guest') {
+                const guestOverlay = document.getElementById('guestReadyOverlay');
+                guestOverlay.style.display = 'flex';
+                guestOverlay.onclick = () => {
+                    videoEl.play().then(() => videoEl.pause());
+                    guestOverlay.style.display = 'none';
+                    showToast("You're connected and ready!");
+                    if (roomRef) roomRef.child('messages').push({ type: 'guest_ready' });
+                };
+              }
+            }
+          } catch (error) {
+            console.error("Failed to connect to LiveKit:", error);
+            showToast(`Connection failed: ${error.message}`);
+            if (error.message && error.message.includes('token')) {
+                showToast("Connection failed: Invalid Token.");
+            }
+          }
+        }
+
+        async function publishLocalMedia() {
+          if (!state.livekitRoom || !permissionsInitialized) return;
+          try {
+            if (mediaState.camStream && mediaState.camOn) {
+              await state.livekitRoom.localParticipant.publishTrack(mediaState.camStream.getVideoTracks()[0], {
+                name: 'camera',
+                source: LivekitClient.Track.Source.Camera,
+              });
+            }
+            if (mediaState.micStream && mediaState.micOn) {
+              await state.livekitRoom.localParticipant.publishTrack(mediaState.micStream.getAudioTracks()[0], {
+                name: 'microphone',
+                source: LivekitClient.Track.Source.Microphone,
+              });
+            }
+          } catch (error) {
+            console.error("Failed to publish tracks:", error);
+          }
+        }
+
+        function attachLocalVideo() {
+          if (!state.livekitRoom) return;
+          const publications = state.livekitRoom.localParticipant.getTrackPublications();
+          publications.forEach(pub => {
+            if (pub.kind === 'video' && pub.track && pub.source === LivekitClient.Track.Source.Camera) {
+              const videoElement = pub.track.attach();
+              hostVideoEl.srcObject = videoElement.srcObject;
+              hostVideoEl.play().catch(e=>console.warn("Local host video play failed", e));
+            }
+          });
+        }
+
+        function handleTrackSubscribed(track, publication, participant) {
+          if (track.kind === 'video' || track.kind === 'audio') {
+            const element = track.attach();
+            if (track.kind === 'video') {
+                element.className = 'guest-video-el';
+            }
+            
+            if (!state.participants[participant.identity]) {
+              state.participants[participant.identity] = {};
+            }
+            state.participants[participant.identity][track.kind] = element;
+            
+            if (track.kind === 'video') renderLayout();
+          }
+        }
+
+        function handleParticipantDisconnected(participant) {
+          if (state.participants[participant.identity]) {
+            Object.values(state.participants[participant.identity]).forEach(el => el.remove());
+            delete state.participants[participant.identity];
+          }
+          renderLayout();
+        }
+
+        function handleTrackUnsubscribed(track, publication, participant) {
+           if (state.participants[participant.identity] && state.participants[participant.identity][track.kind]) {
+               state.participants[participant.identity][track.kind].remove();
+               delete state.participants[participant.identity][track.kind];
+           }
+           renderLayout();
+        }
+
+        function handleGoLiveClick() {
             if (state.isTesting) {
                 btnGoLive.textContent = '✓ Testing'; btnGoLive.style.background = 'var(--cyan)'; btnGoLive.style.color = 'var(--bg)'; btnGoLive.style.fontWeight = '700'; btnGoLive.disabled = true; document.querySelector('.toggle-group').style.display = 'none'; showToast("Test Mode started. Highlight products to see the preview.");
                 return;
             }
-            if (!USE_SIGNALING) { showToast("Firebase is not configured. Cannot go live."); return; }
-            await initPermissions();
-            btnGoLive.disabled = true; btnGoLive.textContent = 'Creating Room...';
-            pc = new RTCPeerConnection({ iceServers: iceServers });
-            setupPeerConnection(pc);
-            pc.onnegotiationneeded = async () => { try { const offerDescription = await pc.createOffer(); await pc.setLocalDescription(offerDescription); await roomRef.child('offer').set({ sdp: offerDescription.sdp, type: offerDescription.type }); } catch (err) { console.error("Host: Error during negotiation:", err); } };
-            roomRef = fbDb.ref('rooms').push(); state.roomId = roomRef.key;
-            pc.onicecandidate = e => { if (e.candidate) roomRef.child('offerCandidates').push(e.candidate.toJSON()); };
-            if (mediaState.micStream) mediaState.micStream.getTracks().forEach(track => pc.addTrack(track, mediaState.micStream));
-            if (mediaState.camStream) mediaState.camStream.getTracks().forEach(track => pc.addTrack(track, mediaState.camStream));
-            roomIdLabel.textContent = state.roomId; roomPill.style.display = 'inline-flex';
-            history.pushState({}, '', `${location.pathname}?room=${state.roomId}`);
-            showToast("Room is live! Share the URL to invite guests."); btnGoLive.textContent = '✓ Live'; btnGoLive.style.background = 'var(--ok)';
-            roomRef.on('value', async s => { const d = s.val(); if (d?.answer && pc.signalingState !== 'stable') await pc.setRemoteDescription(new RTCSessionDescription(d.answer)); });
-            roomRef.child('answerCandidates').on('child_added', s => pc.addIceCandidate(new RTCIceCandidate(s.val())));
-        }
 
-        function setupPeerConnection(peerConnection) {
-            peerConnection.oniceconnectionstatechange = () => console.log(`[${state.role}] ICE State: ${peerConnection.iceConnectionState}`);
-            peerConnection.onsignalingstatechange = () => console.log(`[${state.role}] Signaling State: ${peerConnection.signalingState}`);
-            peerConnection.ontrack = (event) => {
-                if (event.streams && event.streams[0]) {
-                    state.remoteStream = event.streams[0];
-                    remoteVideoEl.srcObject = state.remoteStream;
-                    renderLayout();
-                }
-            };
-            peerConnection.onconnectionstatechange = () => {
-              if (peerConnection.connectionState === 'connected') {
-                  if (state.role === 'host') {
-                      showToast("Guest has connected! Waiting for them to be ready...");
-                  } else {
-                      showToast("Connected to host! Click to join the session.");
-                  }
-              } else if (['disconnected', 'closed', 'failed'].includes(peerConnection.connectionState)) {
-                  if (state.role === 'host') { showToast("Guest has disconnected."); autoSetLayout('host'); state.remoteStream = null; }
-                  else { showToast("Disconnected from host."); }
-              }
-              renderLayout();
-            };
-        }
+            const testRoomId = 'my-cloud-room';
+            const testToken = HOST_TOKEN;
+
+            location.search = `?room=${testRoomId}&token=${testToken}`;
+        };
         
-        async function joinRoom(roomId) {
-            setRole('guest'); await initPermissions();
-            roomRef = fbDb.ref(`rooms/${roomId}`);
-            const snapshot = await roomRef.once('value');
-            if (!snapshot.exists()) { showToast("Room does not exist!"); return; }
-            pc = new RTCPeerConnection({ iceServers: iceServers });
-            setupPeerConnection(pc);
-            if (mediaState.micStream) mediaState.micStream.getTracks().forEach(track => pc.addTrack(track, mediaState.micStream));
-            if (mediaState.camStream) mediaState.camStream.getTracks().forEach(track => pc.addTrack(track, mediaState.camStream));
-            roomRef.child('offerCandidates').on('child_added', s => pc.addIceCandidate(new RTCIceCandidate(s.val())));
-            await pc.setRemoteDescription(new RTCSessionDescription(snapshot.val().offer));
-            const answerDescription = await pc.createAnswer(); await pc.setLocalDescription(answerDescription);
-            await roomRef.update({ answer: { type: answerDescription.type, sdp: answerDescription.sdp } });
-            pc.onicecandidate = e => { if (e.candidate) roomRef.child('answerCandidates').push(e.candidate.toJSON()); };
-            roomIdLabel.textContent = roomId; roomPill.style.display = 'inline-flex';
-            btnGoLive.disabled = true; btnGoLive.textContent = "Joined";
-            
-            const guestOverlay = document.getElementById('guestReadyOverlay');
-            guestOverlay.style.display = 'flex';
-            guestOverlay.onclick = () => {
-                videoEl.play().then(() => videoEl.pause());
-                remoteVideoEl.play().then(() => remoteVideoEl.pause());
-                guestOverlay.style.display = 'none';
-                showToast("You're connected and ready!");
-                if (roomRef) roomRef.child('messages').push({ type: 'guest_ready' });
-            };
-        }
-
-        btnGoLive.onclick = handleGoLiveClick;
-        document.getElementById('btnParticipantsNew').onclick = (e) => { if (!state.roomId) { showToast("Go Live to invite participants."); return; } emailInviteLink.href = `mailto:?subject=${encodeURIComponent("Join my IMBOXO Live session!")}&body=${encodeURIComponent(location.href)}`; e.stopPropagation(); openContextMenu(participantsMenu, e.currentTarget); };
-        btnCopyInvite.onclick = async () => { try { await navigator.clipboard.writeText(location.href); showToast("Invite link copied!"); } catch (e) { showToast("Failed to copy link."); } activeMenu.style.display = 'none'; };
-        btnRecord.onclick = () => { if (mediaState.recording) stopRecording(); else startRecording(); };
         function startRecording() {
           if (!mediaState.camStream || !mediaState.micStream) { showToast("Camera and mic must be on to record."); return; }
           const tracks = [...mediaState.camStream.getTracks(), ...mediaState.micStream.getTracks()];
-          if (remoteVideoEl.srcObject) tracks.push(...remoteVideoEl.srcObject.getAudioTracks());
+          
+          if (state.livekitRoom) {
+            state.livekitRoom.participants.forEach((participant) => {
+                const audioPub = participant.getTrackPublication(LivekitClient.Track.Source.Microphone);
+                if (audioPub && audioPub.track) {
+                    tracks.push(audioPub.track.mediaStreamTrack);
+                }
+            });
+          }
+          
           const streamToRecord = new MediaStream(tracks);
-          mediaState.recorder = new MediaRecorder(streamToRecord, { mimeType: 'video/webm' });
-          const chunks = [];
-          mediaState.recorder.ondataavailable = e => chunks.push(e.data);
-          mediaState.recorder.onstop = () => { const blob = new Blob(chunks, { type: 'video/webm' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `imboxo-live-${new Date().toISOString()}.webm`; a.click(); URL.revokeObjectURL(a.href); };
-          mediaState.recorder.start(); mediaState.recording = true; btnRecord.setAttribute('aria-pressed', true); showToast("Recording started.");
+          try {
+            mediaState.recorder = new MediaRecorder(streamToRecord, { mimeType: 'video/webm' });
+            const chunks = [];
+            mediaState.recorder.ondataavailable = e => chunks.push(e.data);
+            mediaState.recorder.onstop = () => { const blob = new Blob(chunks, { type: 'video/webm' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `imboxo-live-${new Date().toISOString()}.webm`; a.click(); URL.revokeObjectURL(a.href); };
+            mediaState.recorder.start(); mediaState.recording = true; btnRecord.setAttribute('aria-pressed', true); showToast("Recording started.");
+          } catch (e) {
+            console.error("Failed to start recording:", e);
+            showToast("Recording failed to start.");
+          }
         }
 
         function stopRecording() { if (mediaState.recorder) mediaState.recorder.stop(); mediaState.recording = false; btnRecord.setAttribute('aria-pressed', false); showToast("Recording stopped. Download will start."); }
         
-        document.getElementById('btnEndNew').onclick = () => { endModal.classList.add('open'); document.getElementById('btnEndForAll').style.display = state.role === 'host' ? 'block' : 'none'; }
-        document.getElementById('btnEndCancel').onclick = () => endModal.classList.remove('open');
-        document.getElementById('btnLeave').onclick = () => { if(roomRef) roomRef.off(); if(pc) pc.close(); location.href = location.pathname; };
-        document.getElementById('btnEndForAll').onclick = () => { if(roomRef) roomRef.remove().then(() => location.href=location.pathname); else location.href=location.pathname; };
-        
         (async () => {
           try {
-            if (state.roomId) await joinRoom(state.roomId);
-            else { setRole('host'); await initPermissions(); }
-            mountLayoutGallery('studioGallery', false); mountLayoutGallery('cinemaGallery', true); mountLayoutGallery('shopGallery', false);
-            renderLayout(); loadFilm(films[0]); makeCardsCollapsible();
+            btnModeStudio.onclick=()=> setMode('studio');
+            btnModeCinema.onclick=()=> setMode('cinema');
+            btnModeShop.onclick=()=> setMode('shop');
+            btnPlay.onclick=hostPlayPause;
+            document.getElementById('btnSeekBack').onclick=()=> hostSeek(-10);
+            document.getElementById('btnSeekFwd').onclick=()=> hostSeek(+10);
+            chkReplaceHost.onchange=()=>{ state.replaceHost=chkReplaceHost.checked; pipRow.style.display = state.replaceHost ? 'inline-flex' : 'none'; renderLayout(); sendStateUpdate(); };
+            chkHostPiP.onchange=()=>{ state.hostPiP=chkHostPiP.checked; renderLayout(); sendStateUpdate(); };
+            btnChangeFilm.onclick = () => { buildFilmPicker(); filmPicker.classList.add('open'); };
+            filmCloseBtn.onclick = () => filmPicker.classList.remove('open');
+            btnMicNew.onclick = () => setMicState(!mediaState.micOn);
+            btnCamNew.onclick = () => setCamState(!mediaState.camOn);
+            btnResync.onclick = () => {
+              if (state.role === 'host' && state.filmLoaded) {
+                send({ type: 'force_sync', pos: videoEl.currentTime, t: firebase.database.ServerValue.TIMESTAMP, isPlaying: state.playing });
+                showToast("Resync signal sent to all guests.");
+              }
+            };
+            hostCatalogList.addEventListener('click', (e) => { if (e.target.classList.contains('btn-add-to-live')) { const productId = e.target.dataset.productId; const productData = productCatalog.find(p => p.id === productId); if (productData) { state.liveCollection[productId] = productData; renderLiveCollection(); renderHostCatalog(); showToast(`${productData.title} added!`); } } });
+            btnToggleCatalog.onclick = () => { hostCatalogList.classList.toggle('expanded'); btnToggleCatalog.textContent = hostCatalogList.classList.contains('expanded') ? 'See Less' : 'See More'; };
+            liveProductsList.addEventListener('click', (e) => { if (e.target.classList.contains('btn-highlight')) { const productId = e.target.dataset.productId; if (btnGoLive.textContent.includes('Testing') || state.roomId) { const currentlyLive = e.target.classList.contains('is-live'); renderLiveCollection(currentlyLive ? null : productId); renderProductSpotlight(currentlyLive ? null : state.liveCollection[productId]); } else { showToast("You must 'Go Live' or be in 'Test Mode' to highlight products."); } } });
+            document.addEventListener('click', (e) => { if (activeMenu && !activeMenu.contains(e.target) && !e.target.closest('.ctl-group-new') && !e.target.closest('#btnPlusNew')) { activeMenu.style.display = 'none'; activeMenu = null; } });
+            micCaretNew.onclick = (e) => { e.stopPropagation(); openContextMenu(micMenu, e.currentTarget.closest('.ctl-group-new')); };
+            camCaretNew.onclick = (e) => { e.stopPropagation(); openContextMenu(camMenu, e.currentTarget.closest('.ctl-group-new')); };
+            speakerCaretNew.onclick = (e) => { e.stopPropagation(); openContextMenu(speakerMenu, e.currentTarget.closest('.ctl-group-new')); };
+            btnPlusNew.onclick = (e) => { e.stopPropagation(); openContextMenu(plusMenu, e.currentTarget); };
+            micSel.onchange = () => requestMic(micSel.value).catch(e => console.warn(e));
+            camSel.onchange = () => requestCam(camSel.value).catch(e => console.warn(e));
+            document.getElementById('plusMenuScreenShare').onclick = () => { showToast('Screen Share clicked!'); activeMenu.style.display = 'none'; };
+            document.getElementById('plusMenuLocalVideo').onclick = () => { localVideoInput.click(); activeMenu.style.display = 'none'; };
+            localVideoInput.onchange = async (event) => {
+                const file = event.target.files[0]; if (!file) return; showToast('Generating thumbnail...');
+                const fileURL = URL.createObjectURL(file);
+                const thumbnailUrl = await (new Promise((resolve) => { const video = document.createElement('video'); const canvas = document.createElement('canvas'); const url = URL.createObjectURL(file); video.onloadedmetadata = () => { video.currentTime = Math.min(1.5, video.duration / 2); }; video.onseeked = () => { canvas.width = video.videoWidth; canvas.height = video.videoHeight; canvas.getContext('2d').drawImage(video, 0, 0, video.videoWidth, video.videoHeight); URL.revokeObjectURL(url); resolve(canvas.toDataURL('image/jpeg')); }; video.src = url; video.load(); }));
+                loadFilm({ id: 'local', title: file.name, url: fileURL, thumb: thumbnailUrl });
+                setMode('cinema');
+                mediaState.speakerOn = true; btnSpeakerNew.setAttribute('aria-pressed', true); btnSpeakerNew.classList.remove('is-muted'); btnSpeakerNew.dataset.tip = 'Mute';
+                if(mediaState.outputGainNode) mediaState.outputGainNode.gain.value = gainSlider.value;
+                showToast(`Loaded: ${file.name}`); event.target.value = '';
+            };
+            btnSpeakerNew.onclick = () => {
+                mediaState.speakerOn = !mediaState.speakerOn; btnSpeakerNew.setAttribute('aria-pressed', mediaState.speakerOn); btnSpeakerNew.classList.toggle('is-muted', !mediaState.speakerOn); speakerGroup.classList.toggle('is-active', mediaState.speakerOn && state.playing); btnSpeakerNew.dataset.tip = mediaState.speakerOn ? 'Mute' : 'Unmute';
+                if (mediaState.outputGainNode) mediaState.outputGainNode.gain.value = mediaState.speakerOn ? gainSlider.value : 0;
+                if (mediaState.speakerOn && state.playing) startOutputMeter(); else stopOutputMeter();
+            };
+            speakerSel.onchange = async () => { try { if (typeof videoEl.setSinkId !== 'undefined') { await videoEl.setSinkId(speakerSel.value); if (mediaState.outputAudioCtx) await mediaState.outputAudioCtx.setSinkId(speakerSel.value); showToast(`Audio output set to ${speakerSel.options[speakerSel.selectedIndex].text}`); } else { showToast('Changing audio output is not supported.'); } } catch (err) { console.error('Error setting audio output:', err); showToast('Failed to set audio output.'); } };
+            testModeCheck.onchange = () => { state.isTesting = testModeCheck.checked; };
+            document.getElementById('btnParticipantsNew').onclick = (e) => {
+                if (!state.roomId) { showToast("Go Live to invite participants."); return; }
+                const guestUrl = `${location.pathname}?room=${state.roomId}&token=${GUEST_TOKEN}`;
+                emailInviteLink.href = `mailto:?subject=${encodeURIComponent("Join my IMBOXO Live session!")}&body=${encodeURIComponent(guestUrl)}`;
+                e.stopPropagation();
+                openContextMenu(participantsMenu, e.currentTarget);
+            };
+            btnCopyInvite.onclick = async () => {
+                try {
+                    const guestUrl = `${location.pathname}?room=${state.roomId}&token=${GUEST_TOKEN}`;
+                    await navigator.clipboard.writeText(guestUrl);
+                    showToast("Guest invite link copied!");
+                } catch (e) { showToast("Failed to copy link."); }
+                activeMenu.style.display = 'none';
+            };
+            btnRecord.onclick = () => { if (mediaState.recording) stopRecording(); else startRecording(); };
+            document.getElementById('btnEndNew').onclick = () => { endModal.classList.add('open'); document.getElementById('btnEndForAll').style.display = state.role === 'host' ? 'block' : 'none'; }
+            document.getElementById('btnEndCancel').onclick = () => endModal.classList.remove('open');
+            document.getElementById('btnLeave').onclick = () => {
+                if(roomRef) roomRef.off();
+                if(state.livekitRoom) state.livekitRoom.disconnect();
+                location.href = location.pathname;
+            };
+            document.getElementById('btnEndForAll').onclick = () => { if(roomRef) roomRef.remove().then(() => location.href=location.pathname); else location.href=location.pathname; };
+
+            await initPermissions();
+
+            if (state.roomId && state.token) {
+                 setRole(state.token === HOST_TOKEN ? 'host' : 'guest');
+                 await connectToLiveKit();
+            } else {
+                setRole('host');
+            }
+
+            btnGoLive.onclick = handleGoLiveClick;
+
+            mountLayoutGallery('studioGallery', false);
+            mountLayoutGallery('cinemaGallery', true);
+            mountLayoutGallery('shopGallery', false);
+            renderLayout();
+            loadFilm(films[0]);
+            makeCardsCollapsible();
             if (state.role === 'host') { renderHostCatalog(); renderLiveCollection(); }
             document.querySelectorAll('.chat-overlay-toggle-input').forEach(t => { t.checked = state.chatOverlayVisible; t.addEventListener('change', handleChatOverlayToggle); });
-            if (state.roomId) {
-                const messagesRef = fbDb.ref(`rooms/${state.roomId}/messages`);
-                messagesRef.on('child_added', s => {
-                    const message = s.val();
-                    if (message) bus.dispatchEvent(new CustomEvent('m',{detail:message}));
-                });
-            }
+            
+            wireChat('chatInputStudio','chatLogStudio');
+            wireChat('chatInputCinema','chatLogCinema');
+            wireChat('chatInputShop','chatLogShop');
+            
           } catch (err) { console.error("Initialization failed:", err); showToast("A critical error occurred."); }
         })();
+        
         navigator.mediaDevices.addEventListener('devicechange', getDevices);
     });
   </script>
